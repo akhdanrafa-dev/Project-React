@@ -1,0 +1,89 @@
+"use client"
+
+import { router } from "@inertiajs/react"
+import { ShoppingBag, BarChart3 } from "lucide-react"
+
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList } from "@/components/ui/breadcrumb"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
+import { useCart } from "@/layouts/app/context/CartContext"
+import RootLayout from "@/layouts/app/RootLayouts"
+
+function UserDashboardContent() {
+  const { items } = useCart()
+
+  return (
+    <>
+      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
+
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+        </div>
+
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Katalog Produk */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Katalog Produk</CardTitle>
+              <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">5 Produk</div>
+              <p className="text-xs text-muted-foreground">
+                Produk elektronik tersedia
+              </p>
+              <Button
+                className="mt-4 w-full"
+                onClick={() => router.visit('/katalog')}
+              >
+                Lihat Katalog
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Keranjang */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Keranjang</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{items.length} Item</div>
+              <p className="text-xs text-muted-foreground">
+                Item di keranjang Anda
+              </p>
+              <Button
+                variant="outline"
+                className="mt-4 w-full"
+                onClick={() => router.visit('/keranjang')}
+              >
+                Lihat Keranjang
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </>
+  )
+}
+
+export default function UserDashboard() {
+  return (
+    <RootLayout>
+      <UserDashboardContent />
+    </RootLayout>
+  )
+}
