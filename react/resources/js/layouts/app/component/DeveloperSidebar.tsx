@@ -1,6 +1,5 @@
 "use client"
 
-import { usePage } from "@inertiajs/react"
 import {
   Code2,
   Frame,
@@ -10,7 +9,6 @@ import {
   TrendingUp,
 } from "lucide-react"
 import * as React from "react"
-
 
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-project"
@@ -22,7 +20,6 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar-trigger"
-import { type SharedData } from "@/types"
 
 const data = {
   user: {
@@ -57,8 +54,6 @@ const data = {
 export function DeveloperSidebar(
   props: React.ComponentProps<typeof Sidebar>
 ) {
-  const { auth } = usePage<SharedData>().props
-
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>

@@ -16,6 +16,13 @@ class ChatMessageController extends Controller
     {
         $this->authorize('view', $bugTicket);
 
+        if ($bugTicket->isArchivedChat()) {
+            return response()->json([
+                'error' => 'Ticket archived',
+                'message' => 'Chat tiket ini sudah diarsipkan.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'message' => 'required|string',
         ]);

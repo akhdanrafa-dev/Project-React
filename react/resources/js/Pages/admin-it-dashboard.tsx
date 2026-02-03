@@ -2,9 +2,9 @@ import { Head, usePage } from '@inertiajs/react'
 import { AlertCircle, CheckCircle2, Clock, TrendingUp } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { BugReportChat } from '@/components/bug-report-chat'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { BugReportChat } from '@/components/bug-report-chat'
 import {
   Card,
   CardContent,
@@ -146,10 +146,29 @@ export default function AdminITDashboard() {
         return 'bg-purple-100 text-purple-800'
       case 'resolved':
         return 'bg-green-100 text-green-800'
+      case 'diproses kembali':
+        return 'bg-orange-100 text-orange-800'
       case 'closed':
         return 'bg-gray-100 text-gray-800'
       default:
         return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'open':
+        return 'Terbuka'
+      case 'in_progress':
+        return 'Dalam Proses'
+      case 'resolved':
+        return 'Terselesaikan'
+      case 'diproses kembali':
+        return 'Diproses Kembali'
+      case 'closed':
+        return 'Ditutup'
+      default:
+        return status
     }
   }
 
@@ -386,7 +405,7 @@ export default function AdminITDashboard() {
                         </TableCell>
                         <TableCell>
                           <Badge className={getStatusColor(ticket.status)}>
-                            {ticket.status === 'in_progress' ? 'Dalam Proses' : ticket.status}
+                            {getStatusLabel(ticket.status)}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -417,6 +436,97 @@ export default function AdminITDashboard() {
               {tickets.filter(t => t.status === 'in_progress' && t.assigned_to).length === 0 && (
                 <div className="flex items-center justify-center h-32">
                   <p className="text-muted-foreground">Tidak ada tiket yang sedang diproses</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Appeals to Review */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Tiket Aju Banding</CardTitle>
+            <CardDescription>
+              Tiket yang memiliki aju banding dan perlu di-review kembali
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nomor Tiket</TableHead>
+                    <TableHead>Judul</TableHead>
+                    <TableHead>Kategori</TableHead>
+                    <TableHead>Prioritas</TableHead>
+                    <TableHead>Kesulitan</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Pengguna</TableHead>
+                    <TableHead>Aju Banding</TableHead>
+                    <TableHead>Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tickets
+                    .filter(ticket => ticket.status === 'diproses kembali')
+                    .map(ticket => (
+                      <TableRow key={ticket.id}>
+                        <TableCell className="font-mono text-sm">
+                          {ticket.ticket_number}
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate font-medium">
+                          {ticket.title}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {ticket.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={getPriorityColor(ticket.priority)}>
+                            {ticket.priority}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={getDifficultyColor(ticket.difficulty_level)}>
+                            {ticket.difficulty_level === 'easy' ? 'Mudah' : ticket.difficulty_level === 'medium' ? 'Sedang' : 'Sulit'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={getStatusColor(ticket.status)}>
+                            {getStatusLabel(ticket.status)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-sm">{ticket.user.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {ticket.user.email}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-orange-50">
+                            Menunggu Review
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="cursor-pointer"
+                            onClick={() => openTicketChat(ticket)}
+                          >
+                            Review
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+              {tickets.filter(t => t.status === 'diproses kembali').length === 0 && (
+                <div className="flex items-center justify-center h-32">
+                  <p className="text-muted-foreground">Tidak ada tiket aju banding</p>
                 </div>
               )}
             </div>

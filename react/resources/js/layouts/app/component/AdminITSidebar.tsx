@@ -8,6 +8,7 @@ import {
   Users,
   Settings,
   MessageSquare,
+  Archive,
 } from "lucide-react"
 import * as React from "react"
 
@@ -47,6 +48,11 @@ const data = {
           title: "Chat", 
           url: "/admin-it/chats",
           icon: MessageSquare,
+        },
+        { 
+          title: "Arsip Chat", 
+          url: "/admin-it/chat-archives",
+          icon: Archive,
         },
         { 
           title: "Statistik", 

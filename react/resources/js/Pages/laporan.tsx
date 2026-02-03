@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react"
 import { usePage } from "@inertiajs/react"
+import { Loader2 } from "lucide-react"
+import { useState, useEffect } from "react"
+
+import { Badge } from "@/components/ui/badge"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -7,6 +10,10 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
+import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import {
   Table,
   TableBody,
@@ -15,14 +22,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import { useToast } from "@/components/ui/use-toast"
 import RootLayout from "@/layouts/app/RootLayouts"
-import { Loader2 } from "lucide-react"
+
 
 interface BugTicket {
   id: number

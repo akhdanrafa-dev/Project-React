@@ -84,6 +84,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('admin-it-chats');
     })->name('admin-it.chats');
 
+    Route::get('/admin-it/chat-archives', function () {
+        return Inertia::render('admin-it-chat-archive');
+    })->name('admin-it.chat-archives');
+
     Route::get('/admin-it/profile', function () {
         return Inertia::render('admin-it-profile');
     })->name('admin-it.profile');
@@ -253,6 +257,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/api/bug-tickets/{bugTicket}/messages', [\App\Http\Controllers\ChatMessageController::class, 'getMessages']);
     Route::patch('/api/messages/{chatMessage}/mark-as-read', [\App\Http\Controllers\ChatMessageController::class, 'markAsRead']);
     Route::patch('/api/bug-tickets/{bugTicket}/messages/mark-all-as-read', [\App\Http\Controllers\ChatMessageController::class, 'markAllAsRead']);
+
+    Route::post('/api/bug-tickets/{bugTicket}/appeal', [\App\Http\Controllers\BugTicketController::class, 'submitAppeal']);
 
     /*
     |--------------------------------------------------------------------------

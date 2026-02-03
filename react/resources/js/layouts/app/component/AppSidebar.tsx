@@ -101,7 +101,6 @@ function getSidebarForRole(role?: string) {
   if (role === "staff") {
     return <StaffSidebar />
   }
-  // Default untuk user dan admin
   return null
 }
 
@@ -117,15 +116,14 @@ export function AppSidebar(
   props: React.ComponentProps<typeof Sidebar>
 ) {
   const { auth } = usePage().props as any
+  const userRole = auth?.user?.role
 
-  // Jika user adalah developer atau staff, gunakan sidebar khusus mereka
-  const roleSidebar = getSidebarForRole(auth?.user?.role)
+  const roleSidebar = getSidebarForRole(userRole)
   if (roleSidebar) {
     return roleSidebar
   }
 
-  // Jika user regular atau admin, gunakan sidebar default
-  const navMain = getNavMainForRole(auth?.user?.role)
+  const navMain = getNavMainForRole(userRole)
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>

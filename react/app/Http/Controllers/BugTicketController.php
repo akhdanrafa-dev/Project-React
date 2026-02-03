@@ -98,7 +98,7 @@ class BugTicketController extends Controller
             $this->authorize('update', $bugTicket);
 
             $validated = $request->validate([
-                'status' => 'sometimes|in:open,in_progress,resolved,closed',
+                'status' => 'sometimes|in:open,in_progress,resolved,closed,diproses kembali',
                 'priority' => 'sometimes|in:low,medium,high',
                 'difficulty_level' => 'sometimes|in:easy,medium,hard',
                 'assigned_to' => 'sometimes|nullable|exists:users,id',
@@ -282,5 +282,75 @@ class BugTicketController extends Controller
         $speedScore = 100 - min($avgResolution / 2, 50);
         
         return round(($resolutionRate * 0.7) + (max(0, $speedScore) * 0.3), 2);
+    }
+
+    public function submitAppeal(Request $request, BugTicket $bugTicket)
+    {
+        try {
+            \Log::info('Appeal submission started', [
+                'ticket_id' => $bugTicket->id,
+                'user_id' => Auth::id(),
+                'request_data' => $request->all()
+            ]);
+
+            $this->authorize('appeal', $bugTicket);
+
+            $validated = $request->validate([
+                'reason' => 'required|string|min:10|max:1000',
+            ]);
+
+            $MAX_APPEALS = 3;
+            if ($bugTicket->appeal_count >= $MAX_APPEALS) {
+                return response()->json([
+                    'error' => 'Appeal Limit Exceeded',
+                    'message' => 'Anda telah mencapai batas maksimal aju banding (3x)',
+                ], 422);
+            }
+
+            $newAppealCount = $bugTicket->appeal_count + 1;
+            
+            $bugTicket->update([
+                'appeal_count' => $newAppealCount,
+                'status' => 'diproses kembali'
+            ]);
+
+            $bugTicket->refresh();
+
+            \Log::info('Appeal submitted successfully', [
+                'ticket_id' => $bugTicket->id,
+                'new_appeal_count' => $bugTicket->appeal_count
+            ]);
+
+            return response()->json([
+                'message' => 'Aju banding berhasil diajukan',
+                'appeal_count' => $bugTicket->appeal_count,
+                'ticket' => $bugTicket->load(['user', 'messages.user']),
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::warning('Appeal validation failed', ['errors' => $e->errors()]);
+            return response()->json([
+                'error' => 'Validation Error',
+                'message' => 'Data tidak valid',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            \Log::warning('Appeal authorization failed', ['user_id' => Auth::id(), 'ticket_id' => $bugTicket->id]);
+            return response()->json([
+                'error' => 'Unauthorized',
+                'message' => 'Anda tidak memiliki izin untuk mengajukan banding pada tiket ini',
+            ], 403);
+        } catch (\Exception $e) {
+            \Log::error('Appeal submission error', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Server Error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

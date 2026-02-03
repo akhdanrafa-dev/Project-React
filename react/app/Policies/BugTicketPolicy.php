@@ -66,4 +66,12 @@ class BugTicketPolicy
     {
         return false;
     }
+
+    /**
+     * Determine whether the user can submit an appeal.
+     */
+    public function appeal(User $user, BugTicket $bugTicket): bool
+    {
+        return $user->id === $bugTicket->user_id;
+    }
 }

@@ -23,7 +23,10 @@ class BugTicket extends Model
         'assigned_to',
         'taken_at',
         'resolved_at',
+        'appeal_count',
     ];
+
+    public const ARCHIVED_STATUSES = ['resolved', 'closed'];
 
     protected static function boot()
     {
@@ -79,5 +82,10 @@ class BugTicket extends Model
     public function unreadCount(): int
     {
         return $this->unreadMessages()->count();
+    }
+
+    public function isArchivedChat(): bool
+    {
+        return in_array($this->status, self::ARCHIVED_STATUSES, true);
     }
 }
