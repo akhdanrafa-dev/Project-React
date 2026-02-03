@@ -1,4 +1,7 @@
+import { MessageSquare, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
+
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -8,10 +11,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
+
 import { BugReportChat } from "./bug-report-chat"
-import { MessageSquare, Loader2 } from "lucide-react"
 
 interface ChatMessage {
   id: number

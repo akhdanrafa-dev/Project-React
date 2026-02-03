@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react"
 import { MessageSquare, X, Send, Bell } from "lucide-react"
+import { useEffect, useState } from "react"
+
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 
 interface FloatingChatBubbleProps {

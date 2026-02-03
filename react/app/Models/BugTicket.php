@@ -18,8 +18,11 @@ class BugTicket extends Model
         'description',
         'category',
         'priority',
+        'difficulty_level',
         'status',
         'assigned_to',
+        'taken_at',
+        'resolved_at',
     ];
 
     protected static function boot()
@@ -44,6 +47,8 @@ class BugTicket extends Model
     protected $casts = [
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'taken_at' => 'datetime',
+        'resolved_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
@@ -52,6 +57,11 @@ class BugTicket extends Model
     }
 
     public function assignedTo(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function assignedAdmin(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
     }

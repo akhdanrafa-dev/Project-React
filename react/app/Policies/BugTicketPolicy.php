@@ -22,7 +22,7 @@ class BugTicketPolicy
     public function view(User $user, BugTicket $bugTicket): bool
     {
         return $user->id === $bugTicket->user_id || 
-               in_array($user->role, ['admin', 'staff']);
+               in_array($user->role, ['admin', 'staff', 'admin_it', 'developer']);
     }
 
     /**
@@ -39,7 +39,7 @@ class BugTicketPolicy
     public function update(User $user, BugTicket $bugTicket): bool
     {
         return $user->id === $bugTicket->user_id || 
-               in_array($user->role, ['admin', 'staff']);
+               in_array($user->role, ['admin', 'staff', 'admin_it', 'developer']);
     }
 
     /**
@@ -48,7 +48,7 @@ class BugTicketPolicy
     public function delete(User $user, BugTicket $bugTicket): bool
     {
         return $user->id === $bugTicket->user_id || 
-               in_array($user->role, ['admin', 'staff']);
+               in_array($user->role, ['admin', 'staff', 'admin_it', 'developer']);
     }
 
     /**

@@ -24,9 +24,12 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar-trigger"
+import { edit as editAppearance } from "@/routes/appearance"
+
+import { DeveloperSidebar } from "./DeveloperSidebar"
+import { StaffSidebar } from "./StaffSidebar"
 
 // ✅ FIX PALING PENTING
-import { edit as editAppearance } from "@/routes/appearance"
 
 // ================= DATA =================
 const data = {
@@ -91,6 +94,17 @@ const data = {
 }
 
 // ================= ROLE HANDLER =================
+function getSidebarForRole(role?: string) {
+  if (role === "developer") {
+    return <DeveloperSidebar />
+  }
+  if (role === "staff") {
+    return <StaffSidebar />
+  }
+  // Default untuk user dan admin
+  return null
+}
+
 function getNavMainForRole(role?: string) {
   if (role === "user") {
     return data.navMainUser
@@ -104,6 +118,13 @@ export function AppSidebar(
 ) {
   const { auth } = usePage().props as any
 
+  // Jika user adalah developer atau staff, gunakan sidebar khusus mereka
+  const roleSidebar = getSidebarForRole(auth?.user?.role)
+  if (roleSidebar) {
+    return roleSidebar
+  }
+
+  // Jika user regular atau admin, gunakan sidebar default
   const navMain = getNavMainForRole(auth?.user?.role)
 
   return (

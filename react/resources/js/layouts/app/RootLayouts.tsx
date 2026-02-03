@@ -1,8 +1,9 @@
 "use client"
 
-import { PropsWithChildren } from "react"
 import { usePage } from "@inertiajs/react"
+import { PropsWithChildren } from "react"
 
+import { FloatingChatBubble } from "@/components/floating-chat-bubble"
 import {
   SidebarProvider,
   SidebarInset,
@@ -12,7 +13,6 @@ import { Toaster } from "@/components/ui/toasters"
 import { AppSidebar } from "./component/AppSidebar"
 import { CartProvider } from "./context/CartContext"
 import { ThemeProvider } from "./context/ThemeContext"
-import { FloatingChatBubble } from "@/components/floating-chat-bubble"
 
 export default function RootLayout({
   children,

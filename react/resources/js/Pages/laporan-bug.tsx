@@ -179,7 +179,7 @@ function LaporanBugContent() {
               <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/laporan-bug">Laporan Bug</BreadcrumbLink>
+              <BreadcrumbLink href="/laporan-bug">Laporan Bug 😽</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>

@@ -78,28 +78,28 @@ const CATEGORIES: Category[] = [
 const PRODUCTS: Product[] = [
   {
     id: 1,
-    name: "Vortex Mono Series layout 65%/75%/83%/87%/100%",
+    name: "Vortex Mono Series Layout 65%/75%/83%/87%/100%",
     price: 369000,
     image: "https://www.static-src.com/wcsstore/Indraprastha/images/catalog/full/catalog-image/MTA-143215499/vortex_series_vortexseries_mono_series_65_-_75_-_87_layout_flexcut_wired_gasket_mount_keyboard_full03_mgtq582o.jpg",
     category: "keyboard",
   },
   {
     id: 2,
-    name: "Ajazz Ak820 Mono 75% v2",
+    name: "Ajazz Ak820 Monochrome 75% v2",
     price: 299000,
     image: "https://www.static-src.com/wcsstore/Indraprastha/images/catalog/full/catalog-image/MTA-143101682/ajazz_ajazz_ak820_monochrome_-_mechanical_keyboard_full03_rsbvkk6i.jpg",
     category: "keyboard",
   },
   {
     id: 3,
-    name: "Furycube G11 mouse wireless ",
+    name: "Furycube G11 Mouse Wireless ",
     price: 265000,
     image: "https://www.static-src.com/wcsstore/Indraprastha/images/catalog/full/catalog-image/96/MTA-182618402/furycube_furycube_g11_-_g-11_ultra_lightweight_wireless_gaming_mouse_paw3311_full02_jbdwjvnv.jpg",
     category: "mouse",
   },
   {
     id: 4,
-    name: "NYK Nemesis Riot mq10",
+    name: "Mouse NYK Nemesis Riot mq10, Mouse + Docking",
     price: 154000,
     image: "https://down-id.img.susercontent.com/file/id-11134207-7rasi-m5ds47okj4sm07.webp",
     category: "mouse",
@@ -120,49 +120,49 @@ const PRODUCTS: Product[] = [
   },
   {
     id: 7,
-    name: "Fantech x Kobo Zeta Mousepad",
+    name: "Fantech x Vestia Zeta Mousepad",
     price: 209000,
     image: "https://fantech.id/cdn/shop/files/MAINPIC-DESKMATZETAFINAL.webp?v=1757393609&width=533",
     category: "mousepad",
   },
   {
     id: 8,
-    name: "Fantech x Kobo Zeta Mouse",
+    name: "Fantech x Vestia Zeta Mouse",
     price: 249000,
     image: "https://fantech.id/cdn/shop/files/MAINPIC-WG9ZETAHOLOLIVEFINAL.webp?v=1757392944",
     category: "mouse",
   },
   {
     id: 9,
-    name: "Monitor Xiaomi G24i 2026!",
+    name: "Monitor Xiaomi G24i 2026!, 200Hz FAST IPS FHD",
     price: 1495000,
     image: "https://www.static-src.com/wcsstore/Indraprastha/images/catalog/full/catalog-image/MTA-178490843/xiaomi_monitor_led_xiaomi_g24i_24-_fast_ips_1080p_fhd_180hz_1ms_gtg_hdmi_2-0x1_dp_1-4x1_hdr_calibrated_individually_rapid_response_low_latency_freesync_silky_full02_e1enb7wz.webp",
     category: "monitor",
   },
   {
     id: 10,
-    name: "Monitor Xiaomi A24i 2026!",
+    name: "Monitor Xiaomi A24i 2026!, 144Hz FAST IPS FHD",
     price: 1346000,
     image: "https://down-id.img.susercontent.com/file/id-11134207-8224w-mk0fl6pk2jnk94.webp",
     category: "monitor",
   },
   {
     id: 11,
-    name: "Kursi kantor ergonomic",
+    name: "Kursi Kantor Ergonomic, Nyaman Untuk Kerja Lama",
     price: 484000,
     image: "https://down-id.img.susercontent.com/file/id-11134207-81ztm-mdy3znad8r2df6.webp",
     category: "chair",
   },
   {
     id: 12,
-    name: "Stand mouse universal murah",
+    name: "Stand Mouse Universal Murah",
     price: 9000,
     image: "https://down-id.img.susercontent.com/file/sg-11134201-7ravq-maz6ojp343tu0c.webp",
     category: "accessories",
   },
   {
     id: 13,
-    name: "Stand laptop 360 derajat",
+    name: "Stand Laptop Dapat Diputar 360 Derajat",
     price: 129000,
     image: "https://down-id.img.susercontent.com/file/id-11134207-82251-mh5vdql5ua6l3a.webp",
     category: "accessories",
@@ -183,7 +183,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: 16,
-    name: "Keycaps Topography side print purple",
+    name: "Keycaps Topography Side Print Purple",
     price: 199000,
     image: "https://down-id.img.susercontent.com/file/id-11134207-81ztc-mf7qlksrkhe731.webp",
     category: "accessories",
@@ -221,10 +221,6 @@ function KatalogContent() {
   const filteredProducts = selectedCategory
     ? PRODUCTS.filter((p) => p.category === selectedCategory)
     : PRODUCTS
-
-  const getCategoryInfo = (categoryId: string) => {
-    return CATEGORIES.find((c) => c.id === categoryId)
-  }
 
   return (
     <>

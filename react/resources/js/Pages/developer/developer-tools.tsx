@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { usePage } from "@inertiajs/react"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -49,20 +48,18 @@ interface BugTicket {
 const DIFFICULTY_OPTIONS = [
   { value: "easy", label: "Mudah" },
   { value: "medium", label: "Sedang" },
-  { value: "hard", label: "Susah" },
+  { value: "hard", label: "Sulit" },
 ]
 
-export default function LaporanPage() {
+export default function DeveloperToolsPage() {
   return (
     <RootLayout>
-      <LaporanContent />
+      <DeveloperToolsContent />
     </RootLayout>
   )
 }
 
-function LaporanContent() {
-  const page = usePage()
-  const { auth } = page.props as any
+function DeveloperToolsContent() {
   const { toast } = useToast()
   const [tickets, setTickets] = useState<BugTicket[]>([])
   const [loading, setLoading] = useState(false)
@@ -140,9 +137,9 @@ function LaporanContent() {
       case "medium":
         return <Badge className="bg-yellow-100 text-yellow-800">Sedang</Badge>
       case "hard":
-        return <Badge className="bg-red-100 text-red-800">Susah</Badge>
+        return <Badge className="bg-red-100 text-red-800">Sulit</Badge>
       default:
-        return <Badge className="bg-gray-100 text-gray-800">-</Badge>
+        return <Badge className="bg-gray-100 text-gray-800">Sedang</Badge>
     }
   }
 
@@ -151,15 +148,6 @@ function LaporanContent() {
   }
 
   const updateDifficulty = async (ticketId: number, difficulty: string) => {
-    if (auth.user.role !== 'developer') {
-      toast({
-        title: "Error",
-        description: "Hanya developer yang dapat mengubah tingkat kesulitan",
-        variant: "destructive",
-      })
-      return
-    }
-
     setUpdatingTicketId(ticketId)
 
     try {
@@ -227,8 +215,10 @@ function LaporanContent() {
         ticket.user?.email?.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => {
+      // Urutkan berdasarkan prioritas (tinggi ke rendah)
       const priorityDiff = getPriorityValue(b.priority) - getPriorityValue(a.priority)
       if (priorityDiff !== 0) return priorityDiff
+      // Jika prioritas sama, urutkan berdasarkan waktu (yang pertama masuk di atas)
       return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     })
 
@@ -242,7 +232,7 @@ function LaporanContent() {
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+              <BreadcrumbLink href="/developer-dashboard">Dashboard</BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
@@ -283,7 +273,7 @@ function LaporanContent() {
                     <TableHead>Tanggal</TableHead>
                     <TableHead>Nomor Tiket</TableHead>
                     <TableHead>Prioritas</TableHead>
-                    <TableHead>Tingkat Kesulitan</TableHead>
+                    <TableHead>Kesulitan</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Handle By</TableHead>
                   </TableRow>
@@ -305,22 +295,20 @@ function LaporanContent() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             {getDifficultyBadge(ticket.difficulty_level)}
-                            {auth.user.role === 'developer' && (
-                              <select
-                                value={ticket.difficulty_level || ""}
-                                onChange={(e) => updateDifficulty(ticket.id, e.target.value)}
-                                disabled={updatingTicketId === ticket.id}
-                                className="text-xs px-2 py-1 border rounded bg-white cursor-pointer disabled:opacity-50"
-                                aria-label="Ubah tingkat kesulitan"
-                              >
-                                <option value="">-</option>
-                                {DIFFICULTY_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
+                            <select
+                              value={ticket.difficulty_level || ""}
+                              onChange={(e) => updateDifficulty(ticket.id, e.target.value)}
+                              disabled={updatingTicketId === ticket.id}
+                              className="text-xs px-2 py-1 border rounded bg-white cursor-pointer disabled:opacity-50"
+                              aria-label="Ubah tingkat kesulitan"
+                            >
+                              <option value="">-</option>
+                              {DIFFICULTY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </TableCell>
                         <TableCell>{getStatusBadge(ticket.status)}</TableCell>

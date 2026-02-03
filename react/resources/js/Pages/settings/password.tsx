@@ -1,4 +1,4 @@
-import { Form, Head } from "@inertiajs/react"
+import { Form, Head, usePage } from "@inertiajs/react"
 import { useRef, useEffect } from "react"
 
 import InputError from "@/components/input-error"
@@ -6,19 +6,24 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
+import AdminITLayout from "@/layouts/app/AdminITLayout"
 import AppLayout from "@/layouts/app-layout"
 import SettingsLayout from "@/Pages/settings/layout"
 import { update } from "@/routes/user-password"
+import type { SharedData } from "@/types"
 
 export default function Password() {
+  const { auth } = usePage<SharedData>().props
+  const Layout = auth.user?.role === 'admin_it' ? AdminITLayout : AppLayout
+
   return (
-    <AppLayout>
+    <Layout>
       <Head title="Password settings" />
 
       <SettingsLayout>
         <PasswordForm />
       </SettingsLayout>
-    </AppLayout>
+    </Layout>
   )
 }
 

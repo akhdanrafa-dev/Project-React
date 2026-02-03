@@ -4,11 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\BugTicket;
 use App\Models\ChatMessage;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class ChatMessageController extends Controller
 {
+    use AuthorizesRequests;
+
     public function store(Request $request, BugTicket $bugTicket)
     {
         $this->authorize('view', $bugTicket);

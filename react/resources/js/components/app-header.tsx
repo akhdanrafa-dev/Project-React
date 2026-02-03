@@ -3,6 +3,8 @@ import { BookOpen, Folder, LayoutGrid, Menu, LogOut } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { BugReportCenter } from '@/components/bug-report-center';
+import { BugReportForm } from '@/components/bug-report-form';
 import { Icon } from '@/components/icon';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -36,8 +38,6 @@ import { useInitials } from '@/hooks/use-initials';
 import { cn, toUrl } from '@/lib/utils';
 import { logout, dashboard } from '@/routes';
 import { type BreadcrumbItem, type NavItem, type SharedData } from '@/types';
-import { BugReportForm } from '@/components/bug-report-form';
-import { BugReportCenter } from '@/components/bug-report-center';
 
 import AppLogo from './app-logo';
 import AppLogoIcon from './app-logo-icon';

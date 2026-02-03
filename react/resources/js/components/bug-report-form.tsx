@@ -1,4 +1,6 @@
+import { AlertCircle } from "lucide-react"
 import { useState } from "react"
+
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,7 +21,6 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
-import { AlertCircle } from "lucide-react"
 
 interface BugReportFormProps {
   onSuccess?: () => void
@@ -46,6 +47,7 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
     description: "",
     category: "bug",
     priority: "medium",
+    urgency_reason: "",
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,6 +57,15 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
       toast({
         title: "⚠️ Data Tidak Lengkap",
         description: "Mohon isi semua field yang diperlukan",
+        duration: 3000,
+      })
+      return
+    }
+
+    if (formData.priority === "high" && !formData.urgency_reason.trim()) {
+      toast({
+        title: "⚠️ Alasan Prioritas Tinggi Diperlukan",
+        description: "Mohon jelaskan alasan mengapa Anda memilih prioritas tinggi",
         duration: 3000,
       })
       return
@@ -114,6 +125,7 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
         description: "",
         category: "bug",
         priority: "medium",
+        urgency_reason: "",
       })
 
       setOpen(false)
@@ -174,7 +186,7 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
           <div className="space-y-2">
             <Label htmlFor="priority">Prioritas</Label>
             <Select value={formData.priority} onValueChange={(value) =>
-              setFormData({ ...formData, priority: value })
+              setFormData({ ...formData, priority: value, urgency_reason: value === "high" ? formData.urgency_reason : "" })
             }>
               <SelectTrigger id="priority">
                 <SelectValue />
@@ -186,6 +198,21 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
               </SelectContent>
             </Select>
           </div>
+
+          {formData.priority === "high" && (
+            <div className="space-y-2 p-3 bg-red-50 dark:bg-red-950 rounded-md border border-red-200 dark:border-red-800">
+              <Label htmlFor="urgency_reason">Alasan Prioritas Tinggi <span className="text-red-500">*</span></Label>
+              <Textarea
+                id="urgency_reason"
+                placeholder="Jelaskan mengapa Anda membutuhkan perbaikan/respons segera..."
+                value={formData.urgency_reason}
+                onChange={(e) =>
+                  setFormData({ ...formData, urgency_reason: e.target.value })
+                }
+                rows={3}
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="title">Judul</Label>

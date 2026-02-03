@@ -1,13 +1,18 @@
 "use client"
 
-import { Head } from "@inertiajs/react"
+import { Head, usePage } from "@inertiajs/react"
 
+import AdminITLayout from "@/layouts/app/AdminITLayout"
 import AppLayout from "@/layouts/app-layout"
 import SettingsLayout from "@/Pages/settings/layout"
+import { type SharedData } from "@/types"
 
 export default function Settings() {
+  const { auth } = usePage<SharedData>().props
+  const Layout = auth.user?.role === 'admin_it' ? AdminITLayout : AppLayout
+
   return (
-    <AppLayout>
+    <Layout>
       <Head title="Settings" />
 
       <SettingsLayout>
@@ -18,6 +23,6 @@ export default function Settings() {
           </p>
         </div>
       </SettingsLayout>
-    </AppLayout>
+    </Layout>
   )
 }

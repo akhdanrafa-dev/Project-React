@@ -1,5 +1,5 @@
-import { useState } from "react"
 import { usePage } from "@inertiajs/react"
+import { useState } from "react"
 
 export default function TestBugApiPage() {
   const page = usePage()

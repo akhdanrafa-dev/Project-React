@@ -6,20 +6,24 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
+import AdminITLayout from "@/layouts/app/AdminITLayout"
 import AppLayout from "@/layouts/app-layout"
 import SettingsLayout from "@/Pages/settings/layout"
 import { update } from "@/routes/profile"
 import type { SharedData } from "@/types"
 
 export default function Profile() {
+  const { auth } = usePage<SharedData>().props
+  const Layout = auth.user?.role === 'admin_it' ? AdminITLayout : AppLayout
+
   return (
-    <AppLayout>
+    <Layout>
       <Head title="Profile settings" />
 
       <SettingsLayout>
         <ProfileForm />
       </SettingsLayout>
-    </AppLayout>
+    </Layout>
   )
 }
 

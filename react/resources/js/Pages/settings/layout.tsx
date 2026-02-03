@@ -1,16 +1,13 @@
 "use client"
 
-import { Link, usePage } from "@inertiajs/react"
+import { Link } from "@inertiajs/react"
 import React, { ReactNode } from "react"
-
-import { SharedData } from "@/types"
 
 type SettingsLayoutProps = {
   children: ReactNode
 }
 
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
-  const { auth } = usePage<SharedData>().props
 
   // Sub-menu settings
   const settingsMenu = [

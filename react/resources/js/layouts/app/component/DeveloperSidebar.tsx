@@ -7,6 +7,7 @@ import {
   PieChart,
   Map,
   Home,
+  TrendingUp,
 } from "lucide-react"
 import * as React from "react"
 
@@ -37,10 +38,11 @@ const data = {
       items: [
         { title: "Home", url: "/developer-dashboard", icon: Home },
         { title: "Kelola Pengguna", url: "/developer/api" },
-        { title: "Tools", url: "/developer/tools" },
+        { title: "Laporan", url: "/developer/tools" },
         { title: "Integration", url: "/developer/integration" },
         { title: "Debugging", url: "/developer/debug" },
         { title: "Performance", url: "/developer/performance" },
+        { title: "Ranking Admin", url: "/admin-it/rankings", icon: TrendingUp },
         { title: "Settings", url: "/settings" },
       ],
     },

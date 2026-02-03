@@ -1,4 +1,8 @@
+import { Send, Loader2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -8,9 +12,6 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Send, Loader2 } from "lucide-react"
 
 interface ChatMessage {
   id: number
@@ -46,6 +47,12 @@ interface BugReportChatProps {
   currentUserId: number
 }
 
+const getCsrfToken = () => {
+  return (
+    document.querySelector("meta[name='csrf-token']")?.getAttribute("content") ?? ""
+  )
+}
+
 export function BugReportChat({
   open,
   onOpenChange,
@@ -78,7 +85,12 @@ export function BugReportChat({
 
     setLoadingMessages(true)
     try {
-      const response = await fetch(`/api/bug-tickets/${ticket.id}/messages`)
+      const response = await fetch(`/api/bug-tickets/${ticket.id}/messages`, {
+        headers: {
+          "Accept": "application/json",
+        },
+        credentials: "same-origin",
+      })
       if (!response.ok) throw new Error("Gagal mengambil pesan")
 
       const data = await response.json()
@@ -87,6 +99,11 @@ export function BugReportChat({
       // Mark messages as read
       await fetch(`/api/bug-tickets/${ticket.id}/messages/mark-all-as-read`, {
         method: "PATCH",
+        headers: {
+          "X-CSRF-Token": getCsrfToken(),
+          "Accept": "application/json",
+        },
+        credentials: "same-origin",
       })
     } catch (error) {
       toast({
@@ -111,7 +128,10 @@ export function BugReportChat({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken(),
+          "Accept": "application/json",
         },
+        credentials: "same-origin",
         body: JSON.stringify({ message: newMessage }),
       })
 

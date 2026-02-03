@@ -38,6 +38,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             return Inertia::render('staff-dashboard');
         } elseif ($user->role === 'developer') {
             return Inertia::render('developer-dashboard');
+        } elseif ($user->role === 'admin_it') {
+            return Inertia::render('admin-it-dashboard');
         }
 
         return Inertia::render('dashboard');
@@ -56,6 +58,40 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('developer-dashboard');
     })->name('developer.dashboard');
 
+    Route::get('/admin-it-dashboard', function () {
+        return Inertia::render('admin-it-dashboard');
+    })->name('admin-it.dashboard');
+
+    Route::get('/admin-it/ticket/{ticketId}', function ($ticketId) {
+        return Inertia::render('admin-it-chat', ['ticketId' => (int)$ticketId]);
+    })->name('admin-it.chat');
+
+    Route::patch(
+    '/api/bug-tickets/{bugTicket}/take',
+    [BugTicketController::class, 'take']
+)->middleware(['auth', 'verified']);
+
+
+    Route::get('/admin-it/statistics', function () {
+        return Inertia::render('admin-it-statistics');
+    })->name('admin-it.statistics');
+
+    Route::get('/admin-it/rankings', function () {
+        return Inertia::render('admin-it-rankings');
+    })->name('admin-it.rankings');
+
+    Route::get('/admin-it/chats', function () {
+        return Inertia::render('admin-it-chats');
+    })->name('admin-it.chats');
+
+    Route::get('/admin-it/profile', function () {
+        return Inertia::render('admin-it-profile');
+    })->name('admin-it.profile');
+
+    Route::get('/admin-it/tickets', function () {
+        return Inertia::render('admin-it-tickets');
+    })->name('admin-it.tickets');
+
     Route::get('/developer/api', function () {
         $users = \App\Models\User::all()->map(function ($user) {
             return [
@@ -71,6 +107,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ]);
     })->name('developer.kelola-pengguna');
 
+    Route::get('/developer/tools', function () {
+        return Inertia::render('developer/developer-tools');
+    })->name('developer.tools');
+
     /*
     |--------------------------------------------------------------------------
     | Laporan
@@ -81,6 +121,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         if ($user->role === 'user') {
             return Inertia::render('user-laporan');
+        }
+
+        if ($user->role === 'developer') {
+            return Inertia::render('developer/developer-tools');
         }
 
         return Inertia::render('laporan');
@@ -216,6 +260,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::resource('users', UserController::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin IT Routes
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('admin-it')->group(function () {
+        Route::get('/statistics/{adminId}', [\App\Http\Controllers\BugTicketController::class, 'getAdminStats']);
+        Route::get('/rankings', [\App\Http\Controllers\BugTicketController::class, 'getAllAdminsRanking']);
+    });
 
     /*
     |--------------------------------------------------------------------------
