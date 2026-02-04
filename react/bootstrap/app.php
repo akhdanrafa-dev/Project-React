@@ -3,6 +3,7 @@
 use App\Http\Middleware\CheckDeveloperRole;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RefreshCsrfToken;
 use App\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+            RefreshCsrfToken::class,
         ]);
 
         $middleware->alias(['developer' => CheckDeveloperRole::class]);

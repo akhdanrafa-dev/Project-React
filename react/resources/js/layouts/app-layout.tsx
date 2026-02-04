@@ -3,21 +3,26 @@
 import { type PropsWithChildren } from "react"
 
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar-trigger"
+import { Toaster } from "@/components/ui/toasters"
 import { AppSidebar } from "@/layouts/app/component/AppSidebar"
 import { CartProvider } from "@/layouts/app/context/CartContext"
+import { CatalogProvider } from "@/layouts/app/context/CatalogContext"
 import { ThemeProvider } from "@/layouts/app/context/ThemeContext"
 
 export default function AppLayout({ children }: PropsWithChildren) {
   return (
     <ThemeProvider>
-      <CartProvider>
-        <SidebarProvider>
-          <AppSidebar />
-          <SidebarInset>
-            {children}
-          </SidebarInset>
-        </SidebarProvider>
-      </CartProvider>
+      <CatalogProvider>
+        <CartProvider>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+              {children}
+            </SidebarInset>
+          </SidebarProvider>
+          <Toaster />
+        </CartProvider>
+      </CatalogProvider>
     </ThemeProvider>
   )
 }

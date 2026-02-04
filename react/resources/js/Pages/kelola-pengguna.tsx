@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList } from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { 
@@ -32,6 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
+import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import DeveloperLayout from '@/layouts/app/DeveloperLayout'
 
 interface User {
@@ -119,12 +122,26 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
   return (
     <DeveloperLayout>
       <Head title="Kelola Pengguna" />
+
+      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/developer-dashboard">Dashboard</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/developer/api">Kelola Pengguna</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
       
       <div className="flex flex-1 flex-col gap-6 p-4 overflow-x-auto">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Kelola Pengguna</h1>
-            <p className="text-sm text-muted-foreground mt-1">Kelola akun pengguna dan tiket support</p>
           </div>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
@@ -173,6 +190,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
                       <SelectItem value="user">User</SelectItem>
                       <SelectItem value="staff">Staff</SelectItem>
                       <SelectItem value="developer">Developer</SelectItem>
+                      <SelectItem value="admin_it">Admin IT</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -300,6 +318,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
                   <SelectItem value="user">User</SelectItem>
                   <SelectItem value="staff">Staff</SelectItem>
                   <SelectItem value="developer">Developer</SelectItem>
+                  <SelectItem value="admin_it">Admin IT</SelectItem>
                 </SelectContent>
               </Select>
             </div>

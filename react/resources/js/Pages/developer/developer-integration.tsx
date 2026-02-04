@@ -1,4 +1,3 @@
-import { ShoppingCart } from "lucide-react"
 import { useState } from "react"
 
 import {
@@ -11,40 +10,22 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
-import { useToast } from "@/components/ui/use-toast"
-import { useCart } from "@/layouts/app/context/CartContext"
 import { useCatalog } from "@/layouts/app/context/CatalogContext"
 import RootLayout from "@/layouts/app/RootLayouts"
-import { catalogCategories, type CatalogProduct } from "@/lib/catalog"
+import { catalogCategories } from "@/lib/catalog"
 
-export default function KatalogPage() {
+
+export default function DeveloperIntegrationPage() {
   return (
-    <RootLayout>
-      <KatalogContent />
+    <RootLayout hideFloatingChat>
+      <DeveloperIntegrationContent />
     </RootLayout>
   )
 }
 
-function KatalogContent() {
+function DeveloperIntegrationContent() {
   const { products } = useCatalog()
-  const { addToCart } = useCart()
-  const { toast } = useToast()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-
-  const handleAddToCart = (product: CatalogProduct) => {
-    addToCart({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      image: product.image,
-    })
-
-    toast({
-      title: "Berhasil 🛒",
-      description: `${product.name} masuk ke keranjang`,
-      duration: 1500,
-    })
-  }
 
   const filteredProducts = selectedCategory
     ? products.filter((product) => product.category === selectedCategory)
@@ -52,27 +33,27 @@ function KatalogContent() {
 
   return (
     <>
-      <header className="flex h-16 items-center gap-2 border-b px-4">
-        <SidebarTrigger />
-        <Separator orientation="vertical" className="h-4" />
+      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/dashboard">
+              <BreadcrumbLink href="/developer-dashboard">
                 Dashboard
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/katalog">
-                Katalog
+              <BreadcrumbLink href="/developer/integration">
+                Pantau Produk
               </BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
       </header>
 
-      <div className="p-6">
-        <h1 className="text-3xl font-bold mb-8">Katalog Produk </h1>
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <h1 className="text-3xl font-bold mb-3">Pantau Produk</h1>
 
         <div className="mb-8">
           <h2 className="text-lg font-semibold mb-4">Kategori Produk</h2>
@@ -118,18 +99,13 @@ function KatalogContent() {
                 <CardTitle className="line-clamp-2">{product.name}</CardTitle>
               </CardHeader>
 
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3">
                 <p className="text-lg font-semibold text-green-600">
                   Rp {product.price.toLocaleString("id-ID")}
                 </p>
-
-                <Button
-                  className="w-full"
-                  onClick={() => handleAddToCart(product)}
-                >
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  Tambah ke Keranjang
-                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Mode pantau: tidak tersedia pembelian.
+                </p>
               </CardContent>
             </Card>
           ))}

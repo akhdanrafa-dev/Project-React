@@ -1,3 +1,5 @@
+<?php
+
 // app/Http/Controllers/StaffProdukController.php
 
 namespace App\Http\Controllers;
@@ -43,7 +45,7 @@ class StaffProdukController extends Controller
 
         $categories = Category::all(['id', 'name', 'slug', 'description']);
 
-        return Inertia::render('kelola-produk', [
+        return Inertia::render('staff/kelola-produk', [
             'products' => $products,
             'categories' => $categories,
             'selectedCategory' => $request->category ? (int)$request->category : null,

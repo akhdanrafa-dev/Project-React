@@ -12,6 +12,7 @@ import {
   Command,
   BookOpen,
   AudioWaveform,
+  Code2,
 } from "lucide-react"
 import * as React from "react"
 
@@ -58,6 +59,11 @@ const data = {
           title: "Kelola Produk", 
           url: "/kelola-produk",
           icon: Package,
+        },
+        { 
+          title: "Manajemen Developer", 
+          url: "/staff/developer-management",
+          icon: Code2,
         },
         { 
           title: "Settings", 

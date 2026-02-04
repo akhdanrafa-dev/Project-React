@@ -7,7 +7,6 @@ import {
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
-  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -54,7 +53,7 @@ const DIFFICULTY_OPTIONS = [
 
 export default function DeveloperToolsPage() {
   return (
-    <RootLayout>
+    <RootLayout hideFloatingChat>
       <DeveloperToolsContent />
     </RootLayout>
   )
@@ -224,83 +223,79 @@ function DeveloperToolsContent() {
     })
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+    <>
+      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <SidebarTrigger />
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
               <BreadcrumbLink href="/developer-dashboard">Dashboard</BreadcrumbLink>
             </BreadcrumbItem>
-            <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <span>Laporan</span>
+              <BreadcrumbLink href="/developer/tools">Laporan</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-      </div>
+      </header>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Laporan Bug Masuk</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Cari berdasarkan nomor tiket, username, atau email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
-
-          <Separator />
-
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Laporan Bug Masuk</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Cari berdasarkan nomor tiket, username, atau email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="max-w-sm"
+              />
             </div>
-          ) : (
-            <div className="rounded-lg border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">Id</TableHead>
-                    <TableHead>Username</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Tanggal</TableHead>
-                    <TableHead>Nomor Tiket</TableHead>
-                    <TableHead>Prioritas</TableHead>
-                    <TableHead>Kesulitan</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Handle By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTickets && filteredTickets.length > 0 ? (
-                    filteredTickets.map((ticket) => (
-                      <TableRow key={ticket.id}>
-                        <TableCell className="font-medium">{ticket.id}</TableCell>
-                        <TableCell>{ticket.user?.name || "N/A"}</TableCell>
-                        <TableCell>{ticket.user?.email || "N/A"}</TableCell>
-                        <TableCell>
-                          {new Date(ticket.created_at).toLocaleDateString("id-ID")}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {ticket.ticket_number}
-                        </TableCell>
-                        <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {getDifficultyBadge(ticket.difficulty_level)}
+
+            <Separator />
+
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : (
+              <div className="rounded-lg border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">Id</TableHead>
+                      <TableHead>Username</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Tanggal</TableHead>
+                      <TableHead>Nomor Tiket</TableHead>
+                      <TableHead>Prioritas</TableHead>
+                      <TableHead>Kesulitan</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Handle By</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTickets && filteredTickets.length > 0 ? (
+                      filteredTickets.map((ticket) => (
+                        <TableRow key={ticket.id}>
+                          <TableCell className="font-medium">{ticket.id}</TableCell>
+                          <TableCell>{ticket.user?.name || "N/A"}</TableCell>
+                          <TableCell>{ticket.user?.email || "N/A"}</TableCell>
+                          <TableCell>
+                            {new Date(ticket.created_at).toLocaleDateString("id-ID")}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {ticket.ticket_number}
+                          </TableCell>
+                          <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
+                          <TableCell>
                             <select
                               value={ticket.difficulty_level || ""}
                               onChange={(e) => updateDifficulty(ticket.id, e.target.value)}
                               disabled={updatingTicketId === ticket.id}
-                              className="text-xs px-2 py-1 border rounded bg-white cursor-pointer disabled:opacity-50"
+                              className="text-xs px-2 py-1 border rounded bg-white dark:bg-gray-800 text-black dark:text-white cursor-pointer disabled:opacity-50"
                               aria-label="Ubah tingkat kesulitan"
                             >
                               <option value="">-</option>
@@ -310,35 +305,35 @@ function DeveloperToolsContent() {
                                 </option>
                               ))}
                             </select>
-                          </div>
-                        </TableCell>
-                        <TableCell>{getStatusBadge(ticket.status)}</TableCell>
-                        <TableCell>
-                          {ticket.assignedAdmin ? (
-                            <span className="text-sm">{ticket.assignedAdmin.name}</span>
-                          ) : (
-                            <Badge variant="secondary">Belum di handle</Badge>
-                          )}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(ticket.status)}</TableCell>
+                          <TableCell>
+                            {ticket.assignedAdmin ? (
+                              <span className="text-sm">{ticket.assignedAdmin.name}</span>
+                            ) : (
+                              <Badge variant="secondary">Belum di handle</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8">
+                          Tidak ada data bug ticket
                         </TableCell>
                       </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8">
-                        Tidak ada data bug ticket
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
 
-          <div className="text-sm text-muted-foreground">
-            Total: {filteredTickets.length} bug ticket
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            <div className="text-sm text-muted-foreground">
+              Total: {filteredTickets.length} bug ticket
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   )
 }

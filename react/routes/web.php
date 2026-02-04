@@ -115,6 +115,33 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('developer/developer-tools');
     })->name('developer.tools');
 
+    Route::get('/developer/integration', function () {
+        return Inertia::render('developer/developer-integration');
+    })->name('developer.integration');
+
+    Route::get('/developer/debug', function () {
+        return Inertia::render('developer/developer-debug');
+    })->name('developer.staff-management');
+
+    // Halaman obrolan penuh per staff (developer <-> staff)
+    Route::get('/developer/chat/{staffId}', function ($staffId) {
+        return Inertia::render('developer/developer-chat', [
+            'staffId' => (int) $staffId,
+        ]);
+    })->name('developer.staff-chat');
+
+    // Halaman manajemen developer untuk staff
+    Route::get('/staff/developer-management', function () {
+        return Inertia::render('staff-developer-management');
+    })->name('staff.developer-management');
+
+    // Halaman obrolan penuh per developer (staff <-> developer)
+    Route::get('/staff/chat/{developerId}', function ($developerId) {
+        return Inertia::render('staff-developer-chat', [
+            'developerId' => (int) $developerId,
+        ]);
+    })->name('staff.developer-chat');
+
     /*
     |--------------------------------------------------------------------------
     | Laporan
@@ -241,6 +268,28 @@ Route::middleware(['auth', 'verified'])->group(function () {
         }
     });
 
+    // API: daftar user role staff untuk Manajemen Staff (developer)
+    Route::get('/api/staff-users', function () {
+        $users = \App\Models\User::where('role', 'staff')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'role']);
+
+        return response()->json([
+            'users' => $users,
+        ]);
+    });
+
+    // API: daftar user role developer untuk Manajemen Developer (staff)
+    Route::get('/api/developers', function () {
+        $users = \App\Models\User::where('role', 'developer')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'role']);
+
+        return response()->json([
+            'users' => $users,
+        ]);
+    });
+
     /*
     |--------------------------------------------------------------------------
     | Bug Tickets & Chat
@@ -259,6 +308,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/api/bug-tickets/{bugTicket}/messages/mark-all-as-read', [\App\Http\Controllers\ChatMessageController::class, 'markAllAsRead']);
 
     Route::post('/api/bug-tickets/{bugTicket}/appeal', [\App\Http\Controllers\BugTicketController::class, 'submitAppeal']);
+
+    // Staff-Developer Chat API Routes
+    Route::post('/api/staff-developer-chats/{otherUserId}/messages', [\App\Http\Controllers\ChatMessageController::class, 'storeStaffDeveloperMessage']);
+    Route::get('/api/staff-developer-chats/{otherUserId}/messages', [\App\Http\Controllers\ChatMessageController::class, 'getStaffDeveloperMessages']);
+    Route::delete('/api/staff-developer-chats/{otherUserId}/messages', [\App\Http\Controllers\ChatMessageController::class, 'deleteStaffDeveloperMessages']);
 
     /*
     |--------------------------------------------------------------------------
