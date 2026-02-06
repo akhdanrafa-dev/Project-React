@@ -2,20 +2,13 @@
 
 import {
   Code2,
-  Frame,
-  PieChart,
-  Map,
   Home,
   TrendingUp,
 } from "lucide-react"
 import * as React from "react"
-
-import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-project"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
-  SidebarContent,
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
@@ -44,11 +37,6 @@ const data = {
       ],
     },
   ],
-  projects: [
-    { name: "Design Engineering", url: "#", icon: Frame },
-    { name: "Sales & Marketing", url: "#", icon: PieChart },
-    { name: "Travel", url: "#", icon: Map },
-  ],
 }
 
 export function DeveloperSidebar(
@@ -64,12 +52,6 @@ export function DeveloperSidebar(
           </div>
         </div>
       </SidebarHeader>
-
-      <SidebarContent>
-        <NavMain items={data.navMainDeveloper} />
-        <NavProjects projects={data.projects} />
-      </SidebarContent>
-
       <SidebarFooter>
         <NavUser user={data.user} />
       </SidebarFooter>

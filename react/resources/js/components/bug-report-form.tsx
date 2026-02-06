@@ -50,25 +50,38 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
     urgency_reason: "",
   })
 
+  const isFeedback = formData.category === "feedback"
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.title || !formData.description) {
-      toast({
-        title: "⚠️ Data Tidak Lengkap",
-        description: "Mohon isi semua field yang diperlukan",
-        duration: 3000,
-      })
-      return
-    }
+    if (isFeedback) {
+      if (!formData.description) {
+        toast({
+          title: "⚠️ Data Tidak Lengkap",
+          description: "Mohon isi konten masukan Anda",
+          duration: 3000,
+        })
+        return
+      }
+    } else {
+      if (!formData.title || !formData.description) {
+        toast({
+          title: "⚠️ Data Tidak Lengkap",
+          description: "Mohon isi semua field yang diperlukan",
+          duration: 3000,
+        })
+        return
+      }
 
-    if (formData.priority === "high" && !formData.urgency_reason.trim()) {
-      toast({
-        title: "⚠️ Alasan Prioritas Tinggi Diperlukan",
-        description: "Mohon jelaskan alasan mengapa Anda memilih prioritas tinggi",
-        duration: 3000,
-      })
-      return
+      if (formData.priority === "high" && !formData.urgency_reason.trim()) {
+        toast({
+          title: "⚠️ Alasan Prioritas Tinggi Diperlukan",
+          description: "Mohon jelaskan alasan mengapa Anda memilih prioritas tinggi",
+          duration: 3000,
+        })
+        return
+      }
     }
 
     setLoading(true)
@@ -87,16 +100,21 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
         headers["X-CSRF-TOKEN"] = csrfToken
       }
 
-      const response = await fetch("/api/bug-tickets", {
+      const endpoint = isFeedback ? "/api/feedbacks" : "/api/bug-tickets"
+      const requestBody = isFeedback
+        ? { message: formData.description, type: formData.category === 'complaint' ? 'keluhan' : formData.category }
+        : formData
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers,
-        body: JSON.stringify(formData),
+        body: JSON.stringify(requestBody),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        let errorMsg = "Gagal mengirim laporan"
+        let errorMsg = isFeedback ? "Gagal mengirim masukan" : "Gagal mengirim laporan"
         if (data.message) {
           errorMsg = data.message
         } else if (data.errors) {
@@ -110,13 +128,21 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
         throw new Error(data.message)
       }
 
-      const ticketId = data.id || data.data?.id
-      const ticketNumber = data.data?.ticket_number || data.ticket_number || `#${ticketId}`
-      toast({
-        title: "✅ Laporan Berhasil Dikirim!",
-        description: `No. Tiket: ${ticketNumber} | Judul: ${formData.title}`,
-        duration: 5000,
-      })
+      if (isFeedback) {
+        toast({
+          title: "✅ Masukan Berhasil Disimpan!",
+          description: "Terima kasih atas masukan Anda. Masukan anda sangat berarti bagi kami.",
+          duration: 5000,
+        })
+      } else {
+        const ticketId = data.id || data.data?.id
+        const ticketNumber = data.data?.ticket_number || data.ticket_number || `#${ticketId}`
+        toast({
+          title: "✅ Laporan Berhasil Dikirim!",
+          description: `No. Tiket: ${ticketNumber} | Judul: ${formData.title}`,
+          duration: 5000,
+        })
+      }
 
       console.log("Laporan berhasil dikirim:", data)
 
@@ -183,23 +209,25 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="priority">Prioritas</Label>
-            <Select value={formData.priority} onValueChange={(value) =>
-              setFormData({ ...formData, priority: value, urgency_reason: value === "high" ? formData.urgency_reason : "" })
-            }>
-              <SelectTrigger id="priority">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="low">Rendah</SelectItem>
-                <SelectItem value="medium">Sedang</SelectItem>
-                <SelectItem value="high">Tinggi</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {!isFeedback && (
+            <div className="space-y-2">
+              <Label htmlFor="priority">Prioritas</Label>
+              <Select value={formData.priority} onValueChange={(value) =>
+                setFormData({ ...formData, priority: value, urgency_reason: value === "high" ? formData.urgency_reason : "" })
+              }>
+                <SelectTrigger id="priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Rendah</SelectItem>
+                  <SelectItem value="medium">Sedang</SelectItem>
+                  <SelectItem value="high">Tinggi</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-          {formData.priority === "high" && (
+          {!isFeedback && formData.priority === "high" && (
             <div className="space-y-2 p-3 bg-red-50 dark:bg-red-950 rounded-md border border-red-200 dark:border-red-800">
               <Label htmlFor="urgency_reason">Alasan Prioritas Tinggi <span className="text-red-500">*</span></Label>
               <Textarea
@@ -214,23 +242,27 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="title">Judul</Label>
-            <Input
-              id="title"
-              placeholder="Berikan judul singkat untuk laporan Anda"
-              value={formData.title}
-              onChange={(e) =>
-                setFormData({ ...formData, title: e.target.value })
-              }
-            />
-          </div>
+          {!isFeedback && (
+            <div className="space-y-2">
+              <Label htmlFor="title">Judul</Label>
+              <Input
+                id="title"
+                placeholder="Berikan judul singkat untuk laporan Anda"
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
-            <Label htmlFor="description">Deskripsi</Label>
+            <Label htmlFor="description">
+              {isFeedback ? "Konten Masukan" : "Deskripsi"}
+            </Label>
             <Textarea
               id="description"
-              placeholder="Jelaskan detail masalah atau saran Anda..."
+              placeholder={isFeedback ? "Bagikan masukan, saran, atau kritik Anda di sini..." : "Jelaskan detail masalah atau keluhan Anda..."}
               value={formData.description}
               onChange={(e) =>
                 setFormData({ ...formData, description: e.target.value })

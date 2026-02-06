@@ -72,11 +72,6 @@ const data = {
       ],
     },
   ],
-    projects: [
-    { name: "Design Engineering", url: "#", },
-    { name: "Sales & Marketing", url: "#",  },
-    { name: "Travel", url: "#", icon: Map },
-  ],
 }
 
 export function AdminITSidebar(

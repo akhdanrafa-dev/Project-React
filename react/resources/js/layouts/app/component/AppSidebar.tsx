@@ -6,15 +6,11 @@ import {
   SquareTerminal,
   BookOpen,
   Command,
-  Frame,
-  PieChart,
-  Map,
   AudioWaveform,
 } from "lucide-react"
 import * as React from "react"
 
 import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-project"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import {
@@ -72,9 +68,6 @@ const data = {
       isActive: true,
       items: [
         { title: "Beranda", url: "/dashboard" },
-        { title: "Katalog", url: "/katalog" },
-        { title: "Keranjang", url: "/keranjang" },
-        { title: "Riwayat Pembelian", url: "/history-pembelian" },
         { title: "Settings", url: editAppearance().url },
       ],
     },
@@ -82,14 +75,11 @@ const data = {
       title: "Produk",
       icon: BookOpen,
       items: [
-        { title: "Kategori", url: "#" },
+        { title: "Katalog", url: "katalog" },
+        { title: "Keranajang", url: "keranjang" },
+        { title: "Riwayat Pembelian", url: "/history-pembelian" },
       ],
     },
-  ],
-  projects: [
-    { name: "Design Engineering", url: "#", icon: Frame },
-    { name: "Sales & Marketing", url: "#", icon: PieChart },
-    { name: "Travel", url: "#", icon: Map },
   ],
 }
 
@@ -133,7 +123,6 @@ export function AppSidebar(
 
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavProjects projects={data.projects} />
       </SidebarContent>
 
       <SidebarFooter>
