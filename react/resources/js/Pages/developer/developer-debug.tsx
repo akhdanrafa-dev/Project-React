@@ -84,6 +84,7 @@ export default function DeveloperStaffManagement() {
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(false)
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [chatLoading, setChatLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -95,7 +96,7 @@ export default function DeveloperStaffManagement() {
         if (!res.ok) throw new Error('Gagal memuat staff')
         const data = await res.json()
         // map API -> StaffMember
-        const mapped: StaffMember[] = data.users.map((u: any) => ({
+        const mapped: StaffMember[] = data.map((u: any) => ({
           id: u.id,
           name: u.name ?? u.username ?? `User ${u.id}`,
           role: u.role ?? 'staff',
@@ -126,25 +127,47 @@ export default function DeveloperStaffManagement() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [selectedStaffId, selectedMessages.length])
 
-  const handleSendMessage = (event: FormEvent<HTMLFormElement>) => {
+  const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!selectedStaffId || !message.trim()) return
 
-    const newMessage: ChatMessage = {
-      id: Date.now(),
-      sender: "developer",
-      message: message.trim(),
-      time: new Date().toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    }
+    try {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
 
-    setConversations((prev) => ({
-      ...prev,
-      [selectedStaffId]: [...(prev[selectedStaffId] ?? []), newMessage],
-    }))
-    setMessage("")
+      const response = await fetch(`/api/staff-developer-chats/${selectedStaffId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        body: JSON.stringify({
+          message: message.trim(),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to send message')
+      }
+
+      const newMessage = await response.json()
+
+      // Update local conversations
+      setConversations((prev) => ({
+        ...prev,
+        [selectedStaffId]: [...(prev[selectedStaffId] ?? []), {
+          id: newMessage.id,
+          sender: "developer",
+          message: newMessage.message,
+          created_at: newMessage.created_at,
+        }],
+      }))
+
+      setMessage("")
+    } catch (error) {
+      console.error('Error sending message:', error)
+      // You might want to show a toast notification here
+    }
   }
 
   const goToFullChat = (staffId: number) => {

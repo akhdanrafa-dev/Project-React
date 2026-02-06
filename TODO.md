@@ -1,14 +1,18 @@
-# TODO: Add Stock Quantity to Catalog Page
+# TODO List for "Layanan Kami Lainnya" Page Implementation
 
-## Tasks
-- [x] Add stock display to product cards in katalog.tsx, matching developer-integration.tsx format
-- [x] Change CardContent className from space-y-4 to space-y-3 for consistency
-- [x] Verify stock values match database (from catalog.ts)
+## Completed Tasks
+- [x] Create the new page component `layanan-kami-lainnya.tsx` with cards displaying services
+- [x] Add the route for `/layanan-kami-lainnya` in `web.php`
+- [x] Update the sidebar navigation for user role to include "Layanan Kami Lainnya" under a new "Layanan" section
+- [x] Fix import issues in the page component
 
-## Files to Edit
-- react/resources/js/Pages/katalog.tsx
+## Pending Tasks
+- [ ] Test the page functionality and responsiveness
+- [ ] Replace placeholder images with actual service images
+- [ ] Update service URLs to real endpoints if available
+- [ ] Ensure proper styling and layout consistency
 
 ## Notes
-- Stock display format: `<p className="text-xs text-muted-foreground">Stok: {product.stock} unit</p>`
-- Position the stock text between price and "Tambah ke Keranjang" button
-- Stock values are correctly sourced from CatalogContext which uses initialCatalogProducts from catalog.ts
+- The page uses Shadcn UI components for a clean and responsive design
+- Cards include images, titles, descriptions, and external link buttons
+- The page is accessible only for users with the "user" role via sidebar navigation

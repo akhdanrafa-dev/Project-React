@@ -84,9 +84,8 @@ export default function AdminITRankings() {
 
   return (
     <AdminITLayout>
-      <div className="space-y-4 p-4 md:p-6">
-        <Head title="Ranking Admin IT" />
-
+      <Head title="Ranking Admin IT" />
+      <div className="flex flex-1 flex-col gap-6 p-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Ranking Admin IT</h1>
           <p className="mt-2 text-sm text-muted-foreground">

@@ -3,6 +3,12 @@ import { ArrowLeft } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -11,6 +17,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
+import { SidebarTrigger } from '@/components/ui/sidebar-trigger'
 import AdminITLayout from '@/layouts/app/AdminITLayout'
 import type { SharedData } from '@/types'
 
@@ -137,9 +145,21 @@ export default function AdminITChatArchive() {
 
   return (
     <AdminITLayout>
-      <div className="space-y-4 p-4 md:p-6">
-        <Head title="Arsip Chat" />
+      <Head title="Arsip Chat" />
 
+      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/admin-it/chat-archives">Arsip Chat</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
+
+      <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="flex items-center gap-3">
           <ArrowLeft className="h-5 w-5 text-blue-600" />
           <div>

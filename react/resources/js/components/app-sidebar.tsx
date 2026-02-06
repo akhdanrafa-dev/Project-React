@@ -1,10 +1,9 @@
 
 
-import { router, usePage } from "@inertiajs/react"
+import { router,} from "@inertiajs/react"
 import {
   IconCamera,
   IconChartBar,
-  IconDashboard,
   IconDatabase,
   IconFileAi,
   IconFileDescription,
@@ -12,8 +11,6 @@ import {
   IconFolder,
   IconHelp,
   IconInnerShadowTop,
-  IconListDetails,
-  IconLogout,
   IconReport,
   IconSettings,
   IconUsers,
@@ -29,13 +26,11 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
+  SidebarMenu,  
   SidebarMenuItem,
 } from "@/components/ui/sidebar-trigger"
 import { logout } from "@/routes"
-import { edit as editAppearance } from "@/routes/appearance"
-import { type SharedData } from "@/types"
+
 
 const data = {
   user: {

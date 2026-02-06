@@ -104,4 +104,25 @@ class StaffProdukController extends Controller
         return redirect()->route('staff.produk.index')
             ->with('message', 'Produk berhasil dihapus');
     }
+
+    /**
+     * API endpoint to get products for dashboard
+     */
+    public function apiIndex(Request $request)
+    {
+        $products = Product::with('category')->get()->map(function ($product) {
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'sku' => $product->sku,
+                'category' => $product->category->name,
+                'category_id' => $product->category_id,
+                'price' => $product->price,
+                'stock' => $product->stock,
+                'status' => $product->status,
+            ];
+        });
+
+        return response()->json($products);
+    }
 }

@@ -3,6 +3,12 @@ import { AlertCircle, Clock, CheckCircle2, XCircle, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -11,6 +17,8 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { SidebarTrigger } from '@/components/ui/sidebar-trigger'
 import {
   Table,
   TableBody,
@@ -246,7 +254,20 @@ export default function AdminITTickets() {
   }
 
   return (
-    <AdminITLayout>
+     <AdminITLayout>
+       <Head title="Admin IT Dashboard" />
+ 
+       <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+         <SidebarTrigger className="-ml-1" />
+         <Separator orientation="vertical" className="mr-2 h-4" />
+         <Breadcrumb>
+           <BreadcrumbList>
+             <BreadcrumbItem>
+               <BreadcrumbLink href="/admin-it-dashboard">Admin IT Dashboard</BreadcrumbLink>
+             </BreadcrumbItem>
+           </BreadcrumbList>
+         </Breadcrumb>
+       </header>
       <div className="space-y-4 p-4 md:p-6">
         <Head title="Laporan Tiket" />
 

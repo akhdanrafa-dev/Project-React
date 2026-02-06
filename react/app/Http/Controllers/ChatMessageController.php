@@ -303,4 +303,69 @@ class ChatMessageController extends Controller
             ], 500);
         }
     }
+
+    public function getRecentMessages(Request $request)
+    {
+        try {
+            $user = Auth::user();
+
+            if (!$user) {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'User tidak ter-autentikasi.',
+                ], 401);
+            }
+
+            if ($user->role !== 'staff') {
+                return response()->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Hanya staff yang dapat mengakses pesan ini.',
+                ], 403);
+            }
+
+            // Get chats where the user is staff
+            $chats = StaffDeveloperChat::where('staff_id', $user->id)->with('messages.user')->get();
+
+            $recentMessages = [];
+
+            foreach ($chats as $chat) {
+                $messages = $chat->messages()
+                    ->with('user')
+                    ->whereNull('deleted_by_staff_at')
+                    ->latest()
+                    ->take(5) // Take 5 most recent per chat, but we'll limit total later
+                    ->get()
+                    ->map(function ($msg) {
+                        return [
+                            'id' => $msg->id,
+                            'sender' => $msg->user->role,
+                            'message' => $msg->message,
+                            'time' => $msg->created_at->toISOString(),
+                            'developer_name' => $msg->user->role === 'developer' ? $msg->user->name : null,
+                        ];
+                    });
+
+                $recentMessages = array_merge($recentMessages, $messages->toArray());
+            }
+
+            // Sort by time descending and take top 5
+            usort($recentMessages, function ($a, $b) {
+                return strtotime($b['time']) - strtotime($a['time']);
+            });
+
+            $recentMessages = array_slice($recentMessages, 0, 5);
+
+            return response()->json($recentMessages);
+        } catch (\Exception $e) {
+            \Log::error('GetRecentMessages Error: ' . $e->getMessage(), [
+                'user_id' => Auth::id(),
+                'exception' => $e,
+            ]);
+
+            return response()->json([
+                'error' => 'Server error',
+                'message' => 'Terjadi kesalahan saat mengambil pesan terbaru. Silakan coba lagi.',
+            ], 500);
+        }
+    }
 }

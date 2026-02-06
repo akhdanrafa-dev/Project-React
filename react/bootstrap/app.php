@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CheckDeveloperRole;
+use App\Http\Middleware\CheckStaffRole;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RefreshCsrfToken;
@@ -27,7 +28,10 @@ return Application::configure(basePath: dirname(__DIR__))
             RefreshCsrfToken::class,
         ]);
 
-        $middleware->alias(['developer' => CheckDeveloperRole::class]);
+        $middleware->alias([
+            'developer' => CheckDeveloperRole::class,
+            'staff' => CheckStaffRole::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

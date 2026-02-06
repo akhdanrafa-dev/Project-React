@@ -216,6 +216,67 @@ function DeveloperToolsContent() {
     }
   }
 
+  const assignTicketToSelf = async (ticketId: number) => {
+    setUpdatingTicketId(ticketId)
+
+    try {
+      const csrfToken = getCsrfToken()
+
+      const response = await fetch(`/api/bug-tickets/${ticketId}/take`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-Token": csrfToken || "",
+        },
+        body: JSON.stringify({
+          assigned_to: null, // Will be set to current user in backend
+          status: 'in_progress'
+        }),
+      })
+
+      const contentType = response.headers.get("content-type") ?? ""
+      const payload = contentType.includes("application/json")
+        ? await response.json()
+        : { message: await response.text() }
+
+      if (!response.ok) {
+        const errorMsg = payload?.message || payload?.error || `Error ${response.status}`
+        throw new Error(errorMsg)
+      }
+
+      // Update the ticket in local state
+      setTickets((prevTickets) =>
+        prevTickets.map((ticket) =>
+          ticket.id === ticketId
+            ? {
+                ...ticket,
+                status: 'in_progress',
+                assigned_to: payload.assigned_to,
+                assignedAdmin: payload.assignedAdmin
+              }
+            : ticket
+        )
+      )
+
+      toast({
+        title: "Sukses",
+        description: "Tiket berhasil diambil",
+      })
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Gagal mengambil tiket"
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setUpdatingTicketId(null)
+    }
+  }
+
   const filteredTickets = tickets
     .filter(
       (ticket) =>
@@ -320,7 +381,17 @@ function DeveloperToolsContent() {
                             {ticket.assignedAdmin ? (
                               <span className="text-sm">Sudah di handle oleh {ticket.assignedAdmin.name}</span>
                             ) : (
-                              <Badge variant="secondary">Belum di handle</Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary">Belum di handle</Badge>
+                                <button
+                                  onClick={() => assignTicketToSelf(ticket.id)}
+                                  disabled={updatingTicketId === ticket.id}
+                                  className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="Ambil tiket ini"
+                                >
+                                  {updatingTicketId === ticket.id ? '...' : 'Ambil'}
+                                </button>
+                              </div>
                             )}
                           </TableCell>
                         </TableRow>

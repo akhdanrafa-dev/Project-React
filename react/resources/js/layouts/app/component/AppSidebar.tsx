@@ -76,8 +76,15 @@ const data = {
       icon: BookOpen,
       items: [
         { title: "Katalog", url: "katalog" },
-        { title: "Keranajang", url: "keranjang" },
+        { title: "Keranjang", url: "keranjang" },
         { title: "Riwayat Pembelian", url: "/history-pembelian" },
+      ],
+    },
+    {
+      title: "Layanan",
+      icon: Settings2,
+      items: [
+        { title: "Layanan Kami Lainnya", url: "/layanan-kami-lainnya" },
       ],
     },
   ],

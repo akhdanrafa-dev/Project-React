@@ -3,6 +3,12 @@ import { ArrowLeft, CheckCircle2, MessageSquare } from 'lucide-react'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -12,6 +18,8 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { SidebarTrigger } from '@/components/ui/sidebar-trigger'
 import AdminITLayout from '@/layouts/app/AdminITLayout'
 import type { SharedData } from '@/types'
 
@@ -71,13 +79,25 @@ export default function AdminITChats() {
   useEffect(() => {
     fetchTickets()
     
-    // Polling untuk update real-time setiap 5 detik
-    const interval = setInterval(() => {
-      fetchTickets()
-    }, 5000) // 5 detik
+    // Polling untuk update detail tiket yang dipilih setiap 5 detik
+    const detailInterval = setInterval(() => {
+      if (selectedTicketId) {
+        fetchTicketDetails(selectedTicketId)
+      } else {
+        fetchTickets(true)
+      }
+    }, 5000)
 
-    return () => clearInterval(interval)
-  }, [])
+    // Polling untuk update list tiket setiap 30 detik
+    const listInterval = setInterval(() => {
+      fetchTickets(true)
+    }, 30000)
+
+    return () => {
+      clearInterval(detailInterval)
+      clearInterval(listInterval)
+    }
+  }, [selectedTicketId])
 
   useEffect(() => {
     scrollToBottom()
@@ -87,8 +107,10 @@ export default function AdminITChats() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const fetchTickets = async () => {
-    setLoadingTickets(true)
+  const fetchTickets = async (isPolling = false) => {
+    if (!isPolling) {
+      setLoadingTickets(true)
+    }
     setError(null)
     try {
       const response = await fetch('/api/bug-tickets', {
@@ -107,7 +129,9 @@ export default function AdminITChats() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
     } finally {
-      setLoadingTickets(false)
+      if (!isPolling) {
+        setLoadingTickets(false)
+      }
     }
   }
 
@@ -269,9 +293,21 @@ export default function AdminITChats() {
 
   return (
     <AdminITLayout>
-      <div className="space-y-4 p-4 md:p-6">
-        <Head title="Chat Tiket" />
+      <Head title="Chat Tiket" />
 
+      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/admin-it/chats">Chat Tiket</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
+
+      <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="flex items-center gap-3">
           <MessageSquare className="h-5 w-5 text-blue-600" />
           <div>
@@ -429,12 +465,12 @@ export default function AdminITChats() {
                   </div>
                   <div className="flex gap-2">
                     {selectedTicket?.status === 'open' && (
-                      <Button size="xs" variant="outline" type="button" onClick={handleTakeTicket}>
-                        Ambil Tiket
-                      </Button>
+                    <Button size="sm" variant="outline" type="button" onClick={handleTakeTicket}>
+                      Ambil Tiket
+                    </Button>
                     )}
                     {selectedTicket?.status === 'in_progress' && (
-                      <Button size="xs" variant="ghost" type="button" onClick={handleResolveTicket}>
+                      <Button size="sm" variant="ghost" type="button" onClick={handleResolveTicket}>
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Tandai Terselesaikan
                       </Button>

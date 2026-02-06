@@ -4,6 +4,12 @@ import { useEffect, useState } from 'react'
 
 import { BugReportChat } from '@/components/bug-report-chat'
 import { Badge } from '@/components/ui/badge'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -12,6 +18,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
+import { SidebarTrigger } from '@/components/ui/sidebar-trigger'
 import {
   Table,
   TableBody,
@@ -33,12 +41,14 @@ interface Ticket {
   difficulty_level: string
   category: string
   created_at: string
+  user_id: number
   user: {
     id: number
     name: string
     email: string
   }
   assigned_to: number | null
+  appeal_count?: number
 }
 
 interface Stats {
@@ -199,9 +209,21 @@ export default function AdminITDashboard() {
 
   return (
     <AdminITLayout>
-      <div className="space-y-4 p-4 md:p-6">
-        <Head title="Admin IT Dashboard" />
+      <Head title="Admin IT Dashboard" />
 
+      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/admin-it-dashboard">Admin IT Dashboard</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
+
+      <div className="flex flex-1 flex-col gap-6 p-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

@@ -87,7 +87,7 @@ class BugTicketController extends Controller
     {
         $this->authorize('view', $bugTicket);
 
-        $bugTicket->load(['messages.user', 'user', 'assignedTo']);
+        $bugTicket->load(['messages.user', 'user', 'assignedAdmin']);
 
         return response()->json($bugTicket);
     }

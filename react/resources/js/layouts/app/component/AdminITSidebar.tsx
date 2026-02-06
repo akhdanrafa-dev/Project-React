@@ -56,7 +56,7 @@ const data = {
         },
         { 
           title: "Statistik", 
-          url: "/admin-it/statistics",
+          url: "/admin-it/statistics-page",
           icon: BarChart3,
         },
         { 

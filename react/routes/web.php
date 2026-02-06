@@ -4,9 +4,12 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
+
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\BugTicketController;
 use App\Http\Controllers\ChatMessageController;
+use App\Http\Controllers\AdminITController;
+use App\Http\Controllers\StaffProdukController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,115 +35,156 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();
 
-        if ($user->role === 'user') {
-            return Inertia::render('user-dashboard');
-        } elseif ($user->role === 'staff') {
-            return Inertia::render('staff-dashboard');
-        } elseif ($user->role === 'developer') {
-            return Inertia::render('developer-dashboard');
-        } elseif ($user->role === 'admin_it') {
-            return Inertia::render('admin-it-dashboard');
+        switch ($user->role) {
+            case 'user':
+                return Inertia::render('user-dashboard');
+            case 'staff':
+                return Inertia::render('staff-dashboard');
+            case 'developer':
+                return Inertia::render('developer-dashboard');
+            case 'admin_it':
+                return Inertia::render('admin-it-dashboard');
+            default:
+                return Inertia::render('dashboard');
         }
-
-        return Inertia::render('dashboard');
     })->name('dashboard');
+
+    Route::middleware(['staff'])->group(function () {
+        Route::get('/staff-dashboard', fn () => Inertia::render('staff-dashboard'))
+            ->name('staff.dashboard');
+    });
+
+    Route::get('/developer-dashboard', fn () => Inertia::render('developer-dashboard'))
+        ->name('developer.dashboard');
+
+    Route::get('/admin-it-dashboard', fn () => Inertia::render('admin-it-dashboard'))
+        ->name('admin-it.dashboard');
 
     /*
     |--------------------------------------------------------------------------
-    | Staff Dashboard
+    | Admin IT Profile
     |--------------------------------------------------------------------------
     */
-    Route::get('/staff-dashboard', function () {
-        return Inertia::render('staff-dashboard');
-    })->name('staff.dashboard');
-
-    Route::get('/developer-dashboard', function () {
-        return Inertia::render('developer-dashboard');
-    })->name('developer.dashboard');
-
-    Route::get('/admin-it-dashboard', function () {
-        return Inertia::render('admin-it-dashboard');
-    })->name('admin-it.dashboard');
-
-    Route::get('/admin-it/ticket/{ticketId}', function ($ticketId) {
-        return Inertia::render('admin-it-chat', ['ticketId' => (int)$ticketId]);
-    })->name('admin-it.chat');
-
-    Route::patch(
-    '/api/bug-tickets/{bugTicket}/take',
-    [BugTicketController::class, 'take']
-)->middleware(['auth', 'verified']);
-
-
-    Route::get('/admin-it/statistics', function () {
-        return Inertia::render('admin-it-statistics');
-    })->name('admin-it.statistics');
-
-    Route::get('/admin-it/rankings', function () {
-        return Inertia::render('admin-it-rankings');
-    })->name('admin-it.rankings');
-
-    Route::get('/admin-it/chats', function () {
-        return Inertia::render('admin-it-chats');
-    })->name('admin-it.chats');
-
-    Route::get('/admin-it/chat-archives', function () {
-        return Inertia::render('admin-it-chat-archive');
-    })->name('admin-it.chat-archives');
-
+    // redirect profile ke user login
     Route::get('/admin-it/profile', function () {
-        return Inertia::render('admin-it-profile');
+        return redirect()->route(
+            'admin-it.profile.show',
+            ['id' => auth()->id()]
+        );
     })->name('admin-it.profile');
 
-    Route::get('/admin-it/tickets', function () {
-        return Inertia::render('admin-it-tickets');
-    })->name('admin-it.tickets');
+    // profile by id
+    Route::get(
+        '/admin-it/profile/{id}',
+        [AdminITController::class, 'showProfile']
+    )->name('admin-it.profile.show');
 
-    Route::get('/developer/api', function () {
-        $users = \App\Models\User::all()->map(function ($user) {
-            return [
-                'id' => $user->id,
-                'username' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role,
-            ];
-        });
-        
-        return Inertia::render('kelola-pengguna', [
-            'users' => $users,
+    /*
+    |--------------------------------------------------------------------------
+    | Admin IT Statistics & Ranking
+    |--------------------------------------------------------------------------
+    */
+    Route::get(
+        '/admin-it/statistics/{adminId}',
+        [BugTicketController::class, 'getAdminStats']
+    )->name('admin-it.statistics');
+
+    Route::get(
+        '/admin-it/rankings',
+        [BugTicketController::class, 'getAllAdminsRanking']
+    )->name('admin-it.rankings');
+
+    Route::get('/admin-it/statistics-page', function () {
+        return Inertia::render('AdminITStatistics');
+    })->name('admin-it.statistics.page');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin IT Tickets & Chat
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/admin-it/tickets', fn () => Inertia::render('admin-it-tickets'))
+        ->name('admin-it.tickets');
+
+    Route::get('/admin-it/chats', fn () => Inertia::render('admin-it-chats'))
+        ->name('admin-it.chats');
+
+    Route::get('/admin-it/chat-archives', fn () => Inertia::render('admin-it-chat-archive'))
+        ->name('admin-it.chat-archives');
+
+    Route::get('/admin-it/ticket/{ticketId}', function ($ticketId) {
+        return Inertia::render('admin-it-chat', [
+            'ticketId' => (int) $ticketId,
         ]);
-    })->name('developer.kelola-pengguna');
+    })->name('admin-it.chat');
 
-    Route::get('/developer/tools', function () {
-        return Inertia::render('developer/developer-tools');
-    })->name('developer.tools');
+    /*
+    |--------------------------------------------------------------------------
+    | Bug Tickets API
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/api/bug-tickets', [BugTicketController::class, 'index']);
+    Route::post('/api/bug-tickets', [BugTicketController::class, 'store']);
+    Route::get('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'show']);
+    Route::patch('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'update']);
+    Route::get('/api/bug-tickets/unread-count', [BugTicketController::class, 'getUnreadCount']);
+    Route::patch('/api/bug-tickets/{bugTicket}/mark-as-read', [BugTicketController::class, 'markTicketAsRead']);
+    Route::post('/api/bug-tickets/{bugTicket}/appeal', [BugTicketController::class, 'submitAppeal']);
 
-    Route::get('/developer/integration', function () {
-        return Inertia::render('developer/developer-integration');
-    })->name('developer.integration');
+    /*
+    |--------------------------------------------------------------------------
+    | Chat Messages API
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/api/bug-tickets/{bugTicket}/messages', [ChatMessageController::class, 'store']);
+    Route::get('/api/bug-tickets/{bugTicket}/messages', [ChatMessageController::class, 'getMessages']);
+    Route::patch('/api/messages/{chatMessage}/mark-as-read', [ChatMessageController::class, 'markAsRead']);
+    Route::patch('/api/bug-tickets/{bugTicket}/messages/mark-all-as-read', [ChatMessageController::class, 'markAllAsRead']);
 
-    Route::get('/developer/debug', function () {
-        return Inertia::render('developer/developer-debug');
-    })->name('developer.staff-management');
+    /*
+    |--------------------------------------------------------------------------
+    | Staff ↔ Developer Chat
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/api/staff-developer-chats/{otherUserId}/messages', [ChatMessageController::class, 'storeStaffDeveloperMessage']);
+    Route::get('/api/staff-developer-chats/{otherUserId}/messages', [ChatMessageController::class, 'getStaffDeveloperMessages']);
+    Route::delete('/api/staff-developer-chats/{otherUserId}/messages', [ChatMessageController::class, 'deleteStaffDeveloperMessages']);
 
-    // Halaman obrolan penuh per staff (developer <-> staff)
-    Route::get('/developer/chat/{staffId}', function ($staffId) {
-        return Inertia::render('developer/developer-chat', [
-            'staffId' => (int) $staffId,
-        ]);
-    })->name('developer.staff-chat');
+    /*
+    |--------------------------------------------------------------------------
+    | Staff Users API (for developer chat)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/api/staff-users', function () {
+        return response()->json(
+            \App\Models\User::where('role', 'staff')->get()->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'role' => $user->role,
+                    'status' => 'active', // Default status
+                    'lastSeen' => now()->subMinutes(rand(1, 60))->toISOString(),
+                ];
+            })
+        );
+    });
 
-    // Halaman manajemen developer untuk staff
-    Route::get('/staff/developer-management', function () {
-        return Inertia::render('staff-developer-management');
-    })->name('staff.developer-management');
+    /*
+    |--------------------------------------------------------------------------
+    | Users Management
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('users', UserController::class);
 
-    // Halaman obrolan penuh per developer (staff <-> developer)
-    Route::get('/staff/chat/{developerId}', function ($developerId) {
-        return Inertia::render('staff-developer-chat', [
-            'developerId' => (int) $developerId,
-        ]);
-    })->name('staff.developer-chat');
+    /*
+    |--------------------------------------------------------------------------
+    | Staff Produk
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware(['staff'])->group(function () {
+        Route::get('/kelola-produk', [StaffProdukController::class, 'index'])
+            ->name('kelola.produk');
+    });
 
     /*
     |--------------------------------------------------------------------------
@@ -161,174 +205,99 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('laporan');
     })->name('laporan');
 
-    Route::get('/laporan-bug', function () {
-        return Inertia::render('laporan-bug');
-    })->name('laporan.bug');
-
-    Route::get('/test-bug-api', function () {
-        return Inertia::render('test-bug-api');
-    })->name('test.bug.api');
-
     /*
     |--------------------------------------------------------------------------
-    | Kelola Produk
+    | Developer Routes
     |--------------------------------------------------------------------------
     */
-    Route::get('/kelola-produk', [\App\Http\Controllers\StaffProdukController::class, 'index'])
-        ->name('kelola.produk');
+    Route::middleware(['developer'])->group(function () {
+        Route::get('/developer/api', function () {
+            return Inertia::render('kelola-pengguna', [
+                'users' => \App\Models\User::all()->map(function ($user) {
+                    return [
+                        'id' => $user->id,
+                        'username' => $user->name,
+                        'email' => $user->email,
+                        'role' => $user->role,
+                    ];
+                }),
+            ]);
+        })->name('developer.api');
+
+        Route::get('/developer/integration', fn () => Inertia::render('developer/developer-integration'))
+            ->name('developer.integration');
+
+        Route::get('/developer/debug', fn () => Inertia::render('developer/developer-debug'))
+            ->name('developer.debug');
+
+        Route::get('/developer/performance', fn () => Inertia::render('AdminITStatistics'))
+            ->name('developer.performance');
+
+        Route::get('/developer/chat/{staffId}', function ($staffId) {
+            return Inertia::render('developer/developer-chat', [
+                'staffId' => (int) $staffId,
+            ]);
+        })->name('developer.chat');
+    });
+
+    Route::get('/laporan-bug', fn () => Inertia::render('laporan-bug'))
+        ->name('laporan.bug');
+
+    Route::get('/test-bug-api', fn () => Inertia::render('test-bug-api'))
+        ->name('test.bug.api');
 
     /*
     |--------------------------------------------------------------------------
     | Katalog & Keranjang
     |--------------------------------------------------------------------------
     */
-    Route::get('/katalog', function () {
-        return Inertia::render('katalog');
-    })->name('katalog');
-
-    Route::get('/keranjang', function () {
-        return Inertia::render('keranjang');
-    })->name('keranjang');
-
-    Route::get('/history-pembelian', function () {
-        return Inertia::render('history-pembelian');
-    })->name('history.pembelian');
+    Route::get('/katalog', fn () => Inertia::render('katalog'))->name('katalog');
+    Route::get('/keranjang', fn () => Inertia::render('keranjang'))->name('keranjang');
+    Route::get('/history-pembelian', fn () => Inertia::render('history-pembelian'))->name('history.pembelian');
+    Route::get('/layanan-kami-lainnya', fn () => Inertia::render('layanan-kami-lainnya'))->name('layanan.kami.lainnya');
 
     /*
     |--------------------------------------------------------------------------
-    | API Routes
+    | Checkout API
     |--------------------------------------------------------------------------
     */
     Route::post('/api/checkout', function (Request $request) {
-        try {
-            $validated = $request->validate([
-                'items' => 'required|array|min:1',
-                'items.*.product_id' => 'required|numeric',
-                'items.*.product_name' => 'required|string',
-                'items.*.quantity' => 'required|numeric|min:1',
-                'items.*.price' => 'required|numeric|min:0',
-                'items.*.image' => 'nullable|string',
-                'subtotal' => 'required|numeric|min:0',
-                'shipping_cost' => 'required|numeric|min:0',
-                'total' => 'required|numeric|min:0',
-            ]);
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|numeric',
+            'items.*.product_name' => 'required|string',
+            'items.*.quantity' => 'required|numeric|min:1',
+            'items.*.price' => 'required|numeric|min:0',
+            'items.*.image' => 'nullable|string',
+            'subtotal' => 'required|numeric|min:0',
+            'shipping_cost' => 'required|numeric|min:0',
+            'total' => 'required|numeric|min:0',
+        ]);
 
-            $user = auth()->user();
-            
-            $order = \App\Models\Order::create([
-                'user_id' => $user->id,
-                'subtotal' => $validated['subtotal'],
-                'shipping_cost' => $validated['shipping_cost'],
-                'total' => $validated['total'],
-                'status' => 'completed',
-            ]);
+        $user = auth()->user();
 
-            foreach ($validated['items'] as $item) {
-                $order->items()->create([
-                    'product_id' => $item['product_id'],
-                    'product_name' => $item['product_name'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'image' => $item['image'] ?? null,
-                ]);
-            }
+        $order = \App\Models\Order::create([
+            'user_id' => $user->id,
+            'subtotal' => $validated['subtotal'],
+            'shipping_cost' => $validated['shipping_cost'],
+            'total' => $validated['total'],
+            'status' => 'completed',
+        ]);
 
-            return response()->json([
-                'message' => 'Order created successfully',
-                'order_id' => $order->id,
+        foreach ($validated['items'] as $item) {
+            $order->items()->create([
+                'product_id' => $item['product_id'],
+                'product_name' => $item['product_name'],
+                'quantity' => $item['quantity'],
+                'price' => $item['price'],
+                'image' => $item['image'] ?? null,
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'message' => 'Validation error',
-                'errors' => $e->errors(),
-            ], 422);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Failed to create order: ' . $e->getMessage(),
-            ], 400);
         }
-    });
-
-    Route::get('/api/orders', function (Request $request) {
-        try {
-            $user = auth()->user();
-            
-            $orders = \App\Models\Order::where('user_id', $user->id)
-                ->with('items')
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            return response()->json([
-                'orders' => $orders,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Failed to fetch orders: ' . $e->getMessage(),
-            ], 400);
-        }
-    });
-
-    // API: daftar user role staff untuk Manajemen Staff (developer)
-    Route::get('/api/staff-users', function () {
-        $users = \App\Models\User::where('role', 'staff')
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'is_active', 'last_seen']);
 
         return response()->json([
-            'users' => $users,
+            'message' => 'Order created successfully',
+            'order_id' => $order->id,
         ]);
-    });
-
-    // API: daftar user role developer untuk Manajemen Developer (staff)
-    Route::get('/api/developers', function () {
-        $users = \App\Models\User::where('role', 'developer')
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'is_active', 'last_seen']);
-
-        return response()->json([
-            'users' => $users,
-        ]);
-    });
-
-    /*
-    |--------------------------------------------------------------------------
-    | Bug Tickets & Chat
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/api/bug-tickets', [\App\Http\Controllers\BugTicketController::class, 'index']);
-    Route::post('/api/bug-tickets', [\App\Http\Controllers\BugTicketController::class, 'store']);
-    Route::get('/api/bug-tickets/{bugTicket}', [\App\Http\Controllers\BugTicketController::class, 'show']);
-    Route::patch('/api/bug-tickets/{bugTicket}', [\App\Http\Controllers\BugTicketController::class, 'update']);
-    Route::get('/api/bug-tickets/unread-count', [\App\Http\Controllers\BugTicketController::class, 'getUnreadCount']);
-    Route::patch('/api/bug-tickets/{bugTicket}/mark-as-read', [\App\Http\Controllers\BugTicketController::class, 'markTicketAsRead']);
-
-    Route::post('/api/bug-tickets/{bugTicket}/messages', [\App\Http\Controllers\ChatMessageController::class, 'store']);
-    Route::get('/api/bug-tickets/{bugTicket}/messages', [\App\Http\Controllers\ChatMessageController::class, 'getMessages']);
-    Route::patch('/api/messages/{chatMessage}/mark-as-read', [\App\Http\Controllers\ChatMessageController::class, 'markAsRead']);
-    Route::patch('/api/bug-tickets/{bugTicket}/messages/mark-all-as-read', [\App\Http\Controllers\ChatMessageController::class, 'markAllAsRead']);
-
-    Route::post('/api/bug-tickets/{bugTicket}/appeal', [\App\Http\Controllers\BugTicketController::class, 'submitAppeal']);
-
-    // Staff-Developer Chat API Routes
-    Route::post('/api/staff-developer-chats/{otherUserId}/messages', [\App\Http\Controllers\ChatMessageController::class, 'storeStaffDeveloperMessage']);
-    Route::get('/api/staff-developer-chats/{otherUserId}/messages', [\App\Http\Controllers\ChatMessageController::class, 'getStaffDeveloperMessages']);
-    Route::delete('/api/staff-developer-chats/{otherUserId}/messages', [\App\Http\Controllers\ChatMessageController::class, 'deleteStaffDeveloperMessages']);
-
-    /*
-    |--------------------------------------------------------------------------
-    | Users (Admin)
-    |--------------------------------------------------------------------------
-    */
-    Route::resource('users', UserController::class);
-
-    /*
-    |--------------------------------------------------------------------------
-    | Admin IT Routes
-    |--------------------------------------------------------------------------
-    */
-    Route::prefix('admin-it')->group(function () {
-        Route::get('/statistics/{adminId}', [\App\Http\Controllers\BugTicketController::class, 'getAdminStats']);
-        Route::get('/rankings', [\App\Http\Controllers\BugTicketController::class, 'getAllAdminsRanking']);
     });
 
     /*
@@ -343,14 +312,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return redirect('/login');
     })->name('logout');
 
-    Route::get('/logout-confirm', function () {
-        return Inertia::render('logout');
-    })->name('logout.page');
+    Route::get('/logout-confirm', fn () => Inertia::render('logout'))
+        ->name('logout.page');
 });
 
 /*
 |--------------------------------------------------------------------------
-| Settings Routes (DIPISAH)
+| Settings Routes
 |--------------------------------------------------------------------------
 */
 require __DIR__ . '/settings.php';

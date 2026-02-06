@@ -1,6 +1,6 @@
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { Plus, Search, Edit2, Trash2, Eye } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 import {
   AlertDialog,
@@ -51,6 +51,7 @@ interface Props {
 export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
   const [searchTerm, setSearchTerm] = useState("")
   const [users, setUsers] = useState<User[]>(initialUsers)
+  const [loading, setLoading] = useState(false)
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -69,43 +70,119 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
 
 
 
-  const handleCreate = () => {
-    const newUser: User = {
-      id: Math.max(...users.map(u => u.id), 0) + 1,
-      username: formData.username || "",
-      email: formData.email || "",
-      role: formData.role || "",
+  const getCsrfToken = () => {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+  }
+
+  const handleCreate = async () => {
+    setLoading(true)
+    try {
+      const csrfToken = getCsrfToken()
+
+      const response = await fetch('/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({
+          name: formData.username,
+          email: formData.email,
+          password: 'password123', // Default password
+          role: formData.role,
+        }),
+      })
+
+      if (response.ok) {
+        // Refresh the page to get updated data
+        window.location.reload()
+      } else {
+        console.error('Failed to create user')
+      }
+    } catch (error) {
+      console.error('Error creating user:', error)
+    } finally {
+      setLoading(false)
+      setIsCreateDialogOpen(false)
+      setFormData({
+        username: "",
+        email: "",
+        role: "",
+      })
     }
-    setUsers([...users, newUser])
-    setIsCreateDialogOpen(false)
-    setFormData({
-      username: "",
-      email: "",
-      role: "",
-    })
   }
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
     if (!selectedUser) return
-    setUsers(users.map(u => 
-      u.id === selectedUser.id 
-        ? { ...selectedUser, ...formData }
-        : u
-    ))
-    setIsEditDialogOpen(false)
-    setSelectedUser(null)
-    setFormData({
-      username: "",
-      email: "",
-      role: "",
-    })
+
+    setLoading(true)
+    try {
+      const csrfToken = getCsrfToken()
+
+      const response = await fetch(`/users/${selectedUser.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({
+          name: formData.username,
+          email: formData.email,
+          role: formData.role,
+        }),
+      })
+
+      if (response.ok) {
+        // Refresh the page to get updated data
+        window.location.reload()
+      } else {
+        console.error('Failed to update user')
+      }
+    } catch (error) {
+      console.error('Error updating user:', error)
+    } finally {
+      setLoading(false)
+      setIsEditDialogOpen(false)
+      setSelectedUser(null)
+      setFormData({
+        username: "",
+        email: "",
+        role: "",
+      })
+    }
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedUser) return
-    setUsers(users.filter(u => u.id !== selectedUser.id))
-    setIsDeleteDialogOpen(false)
-    setSelectedUser(null)
+
+    setLoading(true)
+    try {
+      const csrfToken = getCsrfToken()
+
+      const response = await fetch(`/users/${selectedUser.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+      })
+
+      if (response.ok) {
+        // Refresh the page to get updated data
+        window.location.reload()
+      } else {
+        console.error('Failed to delete user')
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error)
+    } finally {
+      setLoading(false)
+      setIsDeleteDialogOpen(false)
+      setSelectedUser(null)
+    }
   }
 
   const openEditDialog = (user: User) => {
@@ -196,10 +273,12 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} disabled={loading}>
                   Batal
                 </Button>
-                <Button onClick={handleCreate}>Simpan</Button>
+                <Button onClick={handleCreate} disabled={loading}>
+                  {loading ? 'Menyimpan...' : 'Simpan'}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -324,10 +403,12 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={loading}>
               Batal
             </Button>
-            <Button onClick={handleEdit}>Simpan Perubahan</Button>
+            <Button onClick={handleEdit} disabled={loading}>
+              {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -341,9 +422,9 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Hapus
+            <AlertDialogCancel disabled={loading}>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={loading} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {loading ? 'Menghapus...' : 'Hapus'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

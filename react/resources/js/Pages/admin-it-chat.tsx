@@ -38,6 +38,11 @@ interface Ticket {
   difficulty_level?: string
   category: string
   created_at: string
+  assigned_to?: number | null
+  assignedAdmin?: {
+    id: number
+    name: string
+  } | null
   user: {
     id: number
     name: string
@@ -165,6 +170,28 @@ export default function AdminITChat({ ticketId }: Props) {
       await fetchTicket()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to close ticket')
+    }
+  }
+
+  const handleTakeTicket = async () => {
+    if (!ticket || !currentUserId) return
+
+    try {
+      const response = await fetch(`/api/bug-tickets/${ticket.id}/take`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken(),
+          Accept: 'application/json',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({ assigned_to: currentUserId }),
+      })
+
+      if (!response.ok) throw new Error('Gagal mengambil tiket')
+      await fetchTicket()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
     }
   }
 
@@ -384,6 +411,19 @@ export default function AdminITChat({ ticketId }: Props) {
 
             <Card>
               <CardHeader>
+                <CardTitle className="text-base">Handle By</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {ticket.assignedAdmin ? (
+                  <p className="text-sm font-medium text-green-600">{ticket.assignedAdmin.name}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Belum di-handle</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-base">Deskripsi</CardTitle>
               </CardHeader>
               <CardContent>
@@ -392,6 +432,15 @@ export default function AdminITChat({ ticketId }: Props) {
                 </p>
               </CardContent>
             </Card>
+
+            {ticket.status === 'open' && (
+              <Button
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                onClick={handleTakeTicket}
+              >
+                Ambil Tiket
+              </Button>
+            )}
 
             {ticket.status === 'in_progress' && (
               <div className="space-y-2">

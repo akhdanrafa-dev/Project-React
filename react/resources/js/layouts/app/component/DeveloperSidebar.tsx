@@ -2,13 +2,20 @@
 
 import {
   Code2,
+  Frame,
+  PieChart,
+  Map,
   Home,
   TrendingUp,
 } from "lucide-react"
 import * as React from "react"
+
+import { NavMain } from "@/components/nav-main"
+import { NavProjects } from "@/components/nav-project"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
+  SidebarContent,
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
@@ -28,7 +35,7 @@ const data = {
       items: [
         { title: "Beranda", url: "/developer-dashboard", icon: Home },
         { title: "Kelola Pengguna", url: "/developer/api" },
-        { title: "Laporan", url: "/developer/tools" },
+        { title: "Laporan", url: "/laporan" },
         { title: "Pantau Produk", url: "/developer/integration" },
         { title: "Manajemen Staff", url: "/developer/debug" },
         { title: "Performance", url: "/developer/performance" },
@@ -52,6 +59,11 @@ export function DeveloperSidebar(
           </div>
         </div>
       </SidebarHeader>
+
+      <SidebarContent>
+        <NavMain items={data.navMainDeveloper} />
+      </SidebarContent>
+
       <SidebarFooter>
         <NavUser user={data.user} />
       </SidebarFooter>
