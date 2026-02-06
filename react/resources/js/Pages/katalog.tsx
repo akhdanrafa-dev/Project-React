@@ -118,9 +118,12 @@ function KatalogContent() {
                 <CardTitle className="line-clamp-2">{product.name}</CardTitle>
               </CardHeader>
 
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3">
                 <p className="text-lg font-semibold text-green-600">
                   Rp {product.price.toLocaleString("id-ID")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Stok: {product.stock} unit
                 </p>
 
                 <Button

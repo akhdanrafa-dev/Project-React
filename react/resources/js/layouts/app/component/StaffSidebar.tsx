@@ -5,7 +5,6 @@ import { router } from "@inertiajs/react"
 import {
   Settings2,
   Home,
-  FileText,
   Package,
   LogOut,
   Settings,
@@ -49,11 +48,6 @@ const data = {
           title: "Home", 
           url: "/staff-dashboard",
           icon: Home,
-        },
-        { 
-          title: "Laporan", 
-          url: "/laporan",
-          icon: FileText,
         },
         { 
           title: "Kelola Produk", 

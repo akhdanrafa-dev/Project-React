@@ -1,5 +1,5 @@
-import { Head, router } from "@inertiajs/react"
-import { useEffect, useMemo, useState } from "react"
+import { Head } from "@inertiajs/react"
+import { useEffect, useState } from "react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -50,13 +50,8 @@ export default function StaffDeveloperManagement() {
     return () => { mounted = false }
   }, [])
 
-  const selectedDeveloper = useMemo(
-    () => developers.find((d) => d.id === selectedDeveloperId) ?? null,
-    [developers, selectedDeveloperId],
-  )
-
   const handleChatClick = (developerId: number) => {
-    router.get(`/staff/chat/${developerId}`)
+    window.location.href = `/staff/chat/${developerId}`
   }
 
   const getInitials = (name: string) => {
@@ -72,7 +67,6 @@ export default function StaffDeveloperManagement() {
     <RootLayout hideFloatingChat>
       <Head title="Manajemen Developer" />
 
-      {/* Header with breadcrumbs */}
       <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
         <SidebarTrigger className="-ml-1" />
         <Separator orientation="vertical" className="mr-2 h-4" />
@@ -89,7 +83,6 @@ export default function StaffDeveloperManagement() {
       </header>
 
       <div className="flex flex-1 flex-col gap-6 p-6">
-        {/* Page title and description */}
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Manajemen Developer</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -97,7 +90,6 @@ export default function StaffDeveloperManagement() {
           </p>
         </div>
 
-        {/* List card */}
         <div className="grid gap-4 lg:grid-cols-[1fr]">
           <Card className="h-full">
             <CardHeader>
@@ -118,12 +110,12 @@ export default function StaffDeveloperManagement() {
                 return (
                   <div
                     key={dev.id}
-                    className={`rounded-lg border ${isSelected ? 'border-blue-500 bg-blue-50/5' : 'border-border'}`}
+                    className={`rounded-lg border ${isSelected ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' : 'border-border'}`}
                   >
                     <button
                       type="button"
                       onClick={() => setSelectedDeveloperId(dev.id)}
-                      className="flex w-full items-center gap-3 p-3 text-left"
+                      className="flex w-full items-center gap-3 p-3 text-left hover:bg-muted/50 transition-colors"
                     >
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="text-sm font-semibold">

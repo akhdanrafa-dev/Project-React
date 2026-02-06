@@ -15,6 +15,8 @@ class StaffDeveloperChatMessage extends Model
         'user_id',
         'message',
         'is_read',
+        'deleted_by_staff_at',
+        'deleted_by_developer_at',
     ];
 
     protected $casts = [

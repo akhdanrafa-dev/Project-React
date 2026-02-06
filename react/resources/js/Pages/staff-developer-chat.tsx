@@ -1,4 +1,5 @@
 import { Head, usePage } from "@inertiajs/react"
+import { ArrowLeft } from "lucide-react"
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -6,7 +7,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import RootLayout from "@/layouts/app/RootLayouts"
 
 interface PageProps {
@@ -52,7 +52,6 @@ const getCookie = (name: string): string => {
 }
 
 const getXsrfTokenFromCookie = (): string => {
-  // Laravel sets XSRF-TOKEN cookie URL-encoded
   const raw = getCookie('XSRF-TOKEN')
   try {
     return decodeURIComponent(raw)
@@ -62,7 +61,6 @@ const getXsrfTokenFromCookie = (): string => {
 }
 
 const ensureCsrfCookie = async (): Promise<void> => {
-  // Refresh CSRF cookie used by Laravel/Sanctum to validate X-XSRF-TOKEN
   await fetch('/sanctum/csrf-cookie', {
     method: 'GET',
     credentials: 'same-origin',
@@ -163,7 +161,6 @@ export default function StaffDeveloperChat() {
     const messageText = text.trim()
 
     try {
-      // Ensure CSRF cookie + send X-XSRF-TOKEN from cookie (Laravel/Sanctum compatible)
       await ensureCsrfCookie()
 
       const csrfToken = getCsrfToken()
@@ -181,7 +178,6 @@ export default function StaffDeveloperChat() {
           headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            // Prefer X-XSRF-TOKEN (cookie-based). Keep X-CSRF-TOKEN as fallback for non-sanctum routes.
             ...(xsrfToken ? { 'X-XSRF-TOKEN': xsrfToken } : {}),
             ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
             'X-Requested-With': 'XMLHttpRequest',
@@ -190,7 +186,6 @@ export default function StaffDeveloperChat() {
         }
       )
 
-      // Backend middleware sends `X-CSRF-Token`
       const newCsrfToken =
         response.headers.get('X-CSRF-Token') || response.headers.get('x-csrf-token')
       if (newCsrfToken) {
@@ -251,7 +246,7 @@ export default function StaffDeveloperChat() {
       }
 
       const response = await fetch(
-        `/api/staff-developer-chats/${developer.id}/messages`,
+        `/api/staff-developer-chats/${developer.id}/messages?viewer=staff`,
         {
           method: 'DELETE',
           credentials: 'same-origin',
@@ -280,6 +275,10 @@ export default function StaffDeveloperChat() {
     }
   }
 
+  const handleExitChat = () => {
+    window.location.href = '/staff/developer-management'
+  }
+
   const initials = useMemo(() => {
     if (!developer) return 'US'
     return developer.name
@@ -295,8 +294,20 @@ export default function StaffDeveloperChat() {
       <Head title={`Obrolan Developer #${developerId}`} />
 
       <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
-        <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mr-2 h-4" />
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExitChat}
+            className="gap-2"
+            title="Keluar dari obrolan"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Kembali</span>
+          </Button>
+          <Separator orientation="vertical" className="h-4" />
+        </div>
+        
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="text-xs">{initials}</AvatarFallback>
@@ -355,7 +366,7 @@ export default function StaffDeveloperChat() {
                     className={`rounded-lg px-3 py-2 ${
                       m.sender === 'staff'
                         ? 'bg-blue-600 text-white'
-                        : 'border bg-white text-foreground'
+                        : 'border bg-white dark:bg-slate-800 text-foreground'
                     }`}
                   >
                     {m.message}
@@ -368,12 +379,13 @@ export default function StaffDeveloperChat() {
           <div ref={bottomRef} />
         </div>
 
-        <form onSubmit={handleSend} className="border-t p-4 space-y-3">
+        <form onSubmit={handleSend} className="border-t p-4 space-y-3 bg-background">
           <Input
             placeholder={`Tulis pesan ke ${developer?.name ?? 'developer'}...`}
             value={text}
             onChange={(e) => setText(e.target.value)}
             disabled={!developer || isSending}
+            className="dark:bg-slate-800 dark:text-white"
           />
           <Button type="submit" disabled={!developer || !text.trim() || isSending}>
             {isSending ? 'Mengirim...' : 'Kirim'}

@@ -15,9 +15,9 @@ class BugTicketController extends Controller
         
         // Jika user adalah developer atau admin_it, tampilkan semua bug tickets
         if ($user->role === 'developer' || $user->role === 'admin_it') {
-        $tickets = BugTicket::with(['user', 'assignedAdmin', 'messages.user'])
-            ->oldest()
-            ->get();
+            $tickets = BugTicket::with(['user', 'assignedAdmin', 'messages.user'])
+                ->oldest()
+                ->get();
         } else {
             // Jika user regular, hanya tampilkan miliknya sendiri
             $tickets = BugTicket::where('user_id', Auth::id())
@@ -117,7 +117,7 @@ class BugTicketController extends Controller
             }
 
             $bugTicket->update($validated);
-            $bugTicket->refresh();
+            $bugTicket->load(['user', 'assignedAdmin', 'messages.user']);
 
             return response()->json($bugTicket);
 
@@ -282,6 +282,46 @@ class BugTicketController extends Controller
         $speedScore = 100 - min($avgResolution / 2, 50);
         
         return round(($resolutionRate * 0.7) + (max(0, $speedScore) * 0.3), 2);
+    }
+
+    public function take(Request $request, BugTicket $bugTicket)
+    {
+        try {
+            $this->authorize('update', $bugTicket);
+
+            $validated = $request->validate([
+                'assigned_to' => 'required|exists:users,id',
+                'status' => 'sometimes|in:in_progress',
+            ]);
+
+            $validated['taken_at'] = now();
+            if (!isset($validated['status'])) {
+                $validated['status'] = 'in_progress';
+            }
+
+            $bugTicket->update($validated);
+            $bugTicket->refresh();
+            $bugTicket->load(['user', 'assignedAdmin']);
+
+            return response()->json($bugTicket);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Error',
+                'message' => 'Data tidak valid',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json([
+                'error' => 'Unauthorized',
+                'message' => 'Anda tidak memiliki izin untuk mengubah tiket ini',
+            ], 403);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Server Error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function submitAppeal(Request $request, BugTicket $bugTicket)

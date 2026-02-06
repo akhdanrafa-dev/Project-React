@@ -189,12 +189,20 @@ class ChatMessageController extends Controller
 
             $messages = [];
             if ($chat) {
+                $isStaff = $user->role === 'staff';
+                
                 $messages = $chat->messages()
                     ->with('user')
                     ->latest()
                     ->get()
                     ->reverse()
                     ->values()
+                    ->filter(function ($msg) use ($isStaff) {
+                        if ($isStaff) {
+                            return $msg->deleted_by_staff_at === null;
+                        }
+                        return $msg->deleted_by_developer_at === null;
+                    })
                     ->map(function ($msg) {
                         return [
                             'id' => $msg->id,
@@ -203,6 +211,7 @@ class ChatMessageController extends Controller
                             'created_at' => $msg->created_at,
                         ];
                     })
+                    ->values()
                     ->toArray();
             }
 
@@ -223,7 +232,7 @@ class ChatMessageController extends Controller
         }
     }
 
-    public function deleteStaffDeveloperMessages($otherUserId)
+    public function deleteStaffDeveloperMessages($otherUserId, Request $request)
     {
         try {
             $user = Auth::user();
@@ -260,8 +269,24 @@ class ChatMessageController extends Controller
                 ->first();
 
             if ($chat) {
-                $chat->messages()->delete();
-                $chat->delete();
+                $isStaff = $user->role === 'staff';
+                
+                if ($isStaff) {
+                    $chat->messages()->update(['deleted_by_staff_at' => now()]);
+                } else {
+                    $chat->messages()->update(['deleted_by_developer_at' => now()]);
+                }
+                
+                $allMessagesDeleted = $chat->messages()
+                    ->where(function ($query) {
+                        $query->whereNotNull('deleted_by_staff_at')
+                            ->orWhereNotNull('deleted_by_developer_at');
+                    })
+                    ->count() === $chat->messages()->count();
+                
+                if ($allMessagesDeleted) {
+                    $chat->delete();
+                }
             }
 
             return response()->json(['success' => true]);

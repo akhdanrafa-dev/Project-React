@@ -103,11 +103,13 @@ export default function AdminITDashboard() {
 
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
 
-      const response = await fetch(`/api/bug-tickets/${ticketId}`, {
+      const response = await fetch(`/api/bug-tickets/${ticketId}/take`, {
         method: 'PATCH',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken || '',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({
           assigned_to: userId,

@@ -26,10 +26,26 @@ export default function DeveloperIntegrationPage() {
 function DeveloperIntegrationContent() {
   const { products } = useCatalog()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedStockFilter, setSelectedStockFilter] = useState<string | null>(null)
 
-  const filteredProducts = selectedCategory
+  const getStockCategory = (stock: number) => {
+    if (stock === 0) return "habis"
+    if (stock < 10) return "sedikit"
+    if (stock < 30) return "sedikit"
+    if (stock < 50) return "cukup"
+    return "lebih"
+  }
+
+  let filteredProducts = selectedCategory
     ? products.filter((product) => product.category === selectedCategory)
     : products
+
+  if (selectedStockFilter) {
+    filteredProducts = filteredProducts.filter((product) => {
+      const stockCat = getStockCategory(product.stock)
+      return stockCat === selectedStockFilter
+    })
+  }
 
   return (
     <>
@@ -84,6 +100,21 @@ function DeveloperIntegrationContent() {
           </div>
         </div>
 
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-4">Filter Stok Produk</h2>
+          <select
+            value={selectedStockFilter || ""}
+            onChange={(e) => setSelectedStockFilter(e.target.value || null)}
+            className="px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-950 text-black dark:text-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600"
+          >
+            <option value="">Semua Stok</option>
+            <option value="lebih">Lebih</option>
+            <option value="cukup">Cukup</option>
+            <option value="sedikit">Sedikit</option>
+            <option value="habis">Habis</option>
+          </select>
+        </div>
+
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredProducts.map((product) => (
             <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -104,7 +135,7 @@ function DeveloperIntegrationContent() {
                   Rp {product.price.toLocaleString("id-ID")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Mode pantau: tidak tersedia pembelian.
+                  Stok: {product.stock} unit
                 </p>
               </CardContent>
             </Card>
@@ -114,7 +145,7 @@ function DeveloperIntegrationContent() {
         {filteredProducts.length === 0 && (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
-              Tidak ada produk dalam kategori ini
+              Pencarian Tidak Ada
             </p>
           </div>
         )}

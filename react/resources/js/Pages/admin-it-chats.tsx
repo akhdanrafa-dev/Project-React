@@ -39,6 +39,10 @@ interface Ticket {
   category: string
   created_at: string
   assigned_to?: number | null
+  assignedAdmin?: {
+    id: number
+    name: string
+  } | null
   user: {
     id: number
     name: string
@@ -66,6 +70,13 @@ export default function AdminITChats() {
 
   useEffect(() => {
     fetchTickets()
+    
+    // Polling untuk update real-time setiap 5 detik
+    const interval = setInterval(() => {
+      fetchTickets()
+    }, 5000) // 5 detik
+
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -154,6 +165,34 @@ export default function AdminITChats() {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleTakeTicket = async () => {
+    if (!selectedTicket || !currentUserId) return
+
+    try {
+      const ticketId = selectedTicket.id
+      const response = await fetch(`/api/bug-tickets/${ticketId}/take`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken(),
+          Accept: 'application/json',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({ assigned_to: currentUserId }),
+      })
+
+      if (!response.ok) throw new Error('Gagal mengambil tiket')
+      await fetchTicketDetails(ticketId)
+      setTickets(prev =>
+        prev.map(ticket =>
+          ticket.id === ticketId ? { ...ticket, status: 'in_progress', assigned_to: currentUserId } : ticket,
+        ),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
     }
   }
 
@@ -303,12 +342,21 @@ export default function AdminITChats() {
           <Card className="flex flex-col h-full">
             <CardHeader>
               <div className="flex items-start justify-between gap-4">
-                <div>
+                <div className="flex-1">
                   <CardTitle className="text-base">
                     {selectedTicket ? selectedTicket.title : 'Pilih tiket untuk mulai chat'}
                   </CardTitle>
-                  <CardDescription className="text-sm text-muted-foreground">
+                  <CardDescription className="text-sm text-muted-foreground mt-1">
                     {selectedTicket?.ticket_number} • {selectedTicket?.user.name}
+                    {selectedTicket && (
+                      <div className="mt-2 text-xs">
+                        {selectedTicket.assignedAdmin ? (
+                          <span className="text-green-600">Handle By: {selectedTicket.assignedAdmin.name}</span>
+                        ) : (
+                          <span className="text-orange-600">Belum di-handle</span>
+                        )}
+                      </div>
+                    )}
                   </CardDescription>
                 </div>
                 <Button
@@ -371,18 +419,27 @@ export default function AdminITChats() {
               <form onSubmit={handleSendMessage} className="border-t p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs text-muted-foreground">
-                    {selectedTicket?.status === 'in_progress'
-                      ? 'Status: Dalam Proses'
-                      : selectedTicket
-                        ? `Status: ${getStatusLabel(selectedTicket.status)}`
-                        : 'Pilih tiket untuk mengirim pesan'}
+                    {selectedTicket?.status === 'open'
+                      ? 'Status: Terbuka'
+                      : selectedTicket?.status === 'in_progress'
+                        ? 'Status: Dalam Proses'
+                        : selectedTicket
+                          ? `Status: ${getStatusLabel(selectedTicket.status)}`
+                          : 'Pilih tiket untuk mengirim pesan'}
                   </div>
-                  {selectedTicket?.status === 'in_progress' && (
-                    <Button size="xs" variant="ghost" type="button" onClick={handleResolveTicket}>
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Tandai Terselesaikan
-                    </Button>
-                  )}
+                  <div className="flex gap-2">
+                    {selectedTicket?.status === 'open' && (
+                      <Button size="xs" variant="outline" type="button" onClick={handleTakeTicket}>
+                        Ambil Tiket
+                      </Button>
+                    )}
+                    {selectedTicket?.status === 'in_progress' && (
+                      <Button size="xs" variant="ghost" type="button" onClick={handleResolveTicket}>
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Tandai Terselesaikan
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <Input
                   placeholder="Tulis pesan..."

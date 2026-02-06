@@ -272,7 +272,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/api/staff-users', function () {
         $users = \App\Models\User::where('role', 'staff')
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role']);
+            ->get(['id', 'name', 'email', 'role', 'is_active', 'last_seen']);
 
         return response()->json([
             'users' => $users,
@@ -283,7 +283,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/api/developers', function () {
         $users = \App\Models\User::where('role', 'developer')
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role']);
+            ->get(['id', 'name', 'email', 'role', 'is_active', 'last_seen']);
 
         return response()->json([
             'users' => $users,

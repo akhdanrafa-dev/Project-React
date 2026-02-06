@@ -1,4 +1,5 @@
 import { Head, usePage } from "@inertiajs/react"
+import { ArrowLeft } from "lucide-react"
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -192,7 +193,7 @@ export default function DeveloperStaffChat() {
       }
 
       const response = await fetch(
-        `/api/staff-developer-chats/${staff.id}/messages`,
+        `/api/staff-developer-chats/${staff.id}/messages?viewer=developer`,
         {
           method: 'DELETE',
           headers: {
@@ -216,6 +217,10 @@ export default function DeveloperStaffChat() {
     }
   }
 
+  const handleExitChat = () => {
+    window.location.href = '/developer/debug'
+  }
+
   const initials = useMemo(() => {
     if (!staff) return "US"
     return staff.name
@@ -231,8 +236,20 @@ export default function DeveloperStaffChat() {
       <Head title={`Obrolan Staff #${staffId}`} />
 
       <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
-        <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mr-2 h-4" />
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExitChat}
+            className="gap-2"
+            title="Keluar dari obrolan"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Kembali</span>
+          </Button>
+          <Separator orientation="vertical" className="h-4" />
+        </div>
+        
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="text-xs">{initials}</AvatarFallback>
@@ -280,7 +297,7 @@ export default function DeveloperStaffChat() {
                 )}
                 <div className="max-w-[75%] space-y-1">
                   <p className="text-xs text-muted-foreground">{m.sender === 'developer' ? 'Anda' : staff?.name ?? 'Staff'}</p>
-                  <div className={`rounded-lg px-3 py-2 ${m.sender === 'developer' ? 'bg-blue-600 text-white' : 'border bg-white text-foreground'}`}>
+                  <div className={`rounded-lg px-3 py-2 ${m.sender === 'developer' ? 'bg-blue-600 text-white' : 'border bg-white dark:bg-slate-800 text-foreground'}`}>
                     {m.message}
                   </div>
                   <p className="text-[10px] text-muted-foreground">{m.time}</p>
@@ -291,12 +308,13 @@ export default function DeveloperStaffChat() {
           <div ref={bottomRef} />
         </div>
 
-        <form onSubmit={handleSend} className="border-t p-4 space-y-3">
+        <form onSubmit={handleSend} className="border-t p-4 space-y-3 bg-background">
           <Input
             placeholder={`Tulis pesan ke ${staff?.name ?? 'staff'}...`}
             value={text}
             onChange={(e) => setText(e.target.value)}
             disabled={!staff || isSending}
+            className="dark:bg-slate-800 dark:text-white"
           />
           <Button type="submit" disabled={!staff || !text.trim() || isSending}>
             {isSending ? 'Mengirim...' : 'Kirim'}

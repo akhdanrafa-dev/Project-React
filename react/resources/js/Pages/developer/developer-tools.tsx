@@ -65,27 +65,36 @@ function DeveloperToolsContent() {
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [updatingTicketId, setUpdatingTicketId] = useState<number | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     fetchTickets()
+
+    // Polling untuk update real-time setiap 5 detik
+    const interval = setInterval(() => {
+      fetchTickets()
+    }, 5000) // 5 detik
+
+    return () => clearInterval(interval)
   }, [])
 
   const fetchTickets = async () => {
-    setLoading(true)
     try {
       const response = await fetch("/api/bug-tickets")
       if (!response.ok) throw new Error("Gagal mengambil ticket")
 
       const data = await response.json()
-      setTickets(data)
+      // Force re-render dengan membuat array baru
+      setTickets([...data])
+      // Increment refreshKey untuk memaksa re-render Table
+      setRefreshKey(prev => prev + 1)
     } catch (error) {
+      console.error("Error fetching tickets:", error)
       toast({
         title: "Error",
         description: "Gagal mengambil data ticket",
         variant: "destructive",
       })
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -262,7 +271,7 @@ function DeveloperToolsContent() {
               </div>
             ) : (
               <div className="rounded-lg border overflow-x-auto">
-                <Table>
+                <Table key={refreshKey}>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">Id</TableHead>
@@ -309,7 +318,7 @@ function DeveloperToolsContent() {
                           <TableCell>{getStatusBadge(ticket.status)}</TableCell>
                           <TableCell>
                             {ticket.assignedAdmin ? (
-                              <span className="text-sm">{ticket.assignedAdmin.name}</span>
+                              <span className="text-sm">Sudah di handle oleh {ticket.assignedAdmin.name}</span>
                             ) : (
                               <Badge variant="secondary">Belum di handle</Badge>
                             )}
