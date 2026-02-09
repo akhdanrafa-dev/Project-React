@@ -45,6 +45,10 @@ interface BugTicket {
     id: number
     name: string
   } | null
+  assigned_admin?: {
+    id: number
+    name: string
+  } | null
 }
 
 const DIFFICULTY_OPTIONS = [
@@ -52,6 +56,15 @@ const DIFFICULTY_OPTIONS = [
   { value: "medium", label: "Sedang" },
   { value: "hard", label: "Sulit" },
 ]
+
+type ApiBugTicket = BugTicket & {
+  assigned_admin?: BugTicket["assignedAdmin"]
+}
+
+const normalizeTicket = (ticket: ApiBugTicket): BugTicket => ({
+  ...ticket,
+  assignedAdmin: ticket.assignedAdmin ?? ticket.assigned_admin ?? null,
+})
 
 export default function DeveloperToolsPage() {
   return (
@@ -87,7 +100,10 @@ function DeveloperToolsContent() {
 
       const data = await response.json()
       console.log("Fetched tickets with assignedAdmin:", data)
-      setTickets([...data])
+      const normalizedTickets = Array.isArray(data)
+        ? data.map((ticket: ApiBugTicket) => normalizeTicket(ticket))
+        : []
+      setTickets(normalizedTickets)
       setRefreshKey(prev => prev + 1)
       setLoading(false)
     } catch (error) {
@@ -342,13 +358,12 @@ function DeveloperToolsContent() {
                           </TableCell>
                           <TableCell>{getStatusBadge(ticket.status)}</TableCell>
                           <TableCell>
-                            {ticket.assignedAdmin ? (
-                              <div className="flex items-center gap-2">
-                                <Badge className="bg-blue-100 text-blue-800">TerHandle</Badge>
-                                <span className="text-sm font-medium text-gray-700">{ticket.assignedAdmin.name}</span>
-                              </div>
+                            {ticket.assignedAdmin?.name ? (
+                              <span className="text-sm font-medium text-gray-700">
+                                Telah di Handle {ticket.assignedAdmin.name}
+                              </span>
                             ) : (
-                              <Badge variant="secondary" className="bg-gray-100 text-gray-800">Belum di handle</Badge>
+                              <Badge variant="secondary" className="bg-gray-100 text-gray-800">Belum di Handle</Badge>
                             )}
                           </TableCell>
                         </TableRow>

@@ -120,13 +120,7 @@ export default function KelolaProduk({
       <Head title="Kelola Produk" />
 
       <div className="flex flex-1 flex-col gap-6 p-4">
-        {/* Debug Info */}
-        <div className="bg-yellow-100 p-4 rounded-lg">
-          <p><strong>Debug Info:</strong></p>
-          <p>Role: {role || 'undefined'}</p>
-          <p>Is Developer: {role === 'developer' ? 'Yes' : 'No'}</p>
-          <p>Products Count: {filteredProducts.length}</p>
-        </div>
+      
         <div>
           <h1 className="text-3xl font-bold">Kelola Produk</h1>
           <p className="text-sm text-muted-foreground mt-1">Kelola dan monitor semua produk</p>
