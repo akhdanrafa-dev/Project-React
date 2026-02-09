@@ -36,7 +36,7 @@ const data = {
         { title: "Beranda", url: "/developer-dashboard", icon: Home },
         { title: "Kelola Pengguna", url: "/developer/api" },
         { title: "Laporan", url: "/laporan" },
-        { title: "Pantau Produk", url: "/developer/integration" },
+        { title: "Pantau Produk", url: "/kelola-produk" },
         { title: "Manajemen Staff", url: "/developer/debug" },
         { title: "Performance", url: "/developer/performance" },
         { title: "Ranking Admin", url: "/admin-it/rankings", icon: TrendingUp },

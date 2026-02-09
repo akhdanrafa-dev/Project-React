@@ -1,0 +1,101 @@
+
+  GET|HEAD        / ............................................................................................. home
+  GET|HEAD        admin-it-dashboard .............................................................. admin-it.dashboard
+  GET|HEAD        admin-it/chat-archives ...................................................... admin-it.chat-archives
+  GET|HEAD        admin-it/chats ...................................................................... admin-it.chats
+  GET|HEAD        admin-it/profile .................................................................. admin-it.profile
+  GET|HEAD        admin-it/profile/{id} ........................ admin-it.profile.show › AdminITController@showProfile
+  GET|HEAD        admin-it/rankings ...................... admin-it.rankings › BugTicketController@getAllAdminsRanking
+  GET|HEAD        admin-it/statistics-page .................................................. admin-it.statistics.page
+  GET|HEAD        admin-it/statistics/{adminId} .............. admin-it.statistics › BugTicketController@getAdminStats
+  GET|HEAD        admin-it/ticket/{ticketId} ........................................................... admin-it.chat
+  GET|HEAD        admin-it/tickets .................................................................. admin-it.tickets
+  GET|HEAD        api/bug-tickets .......................................................... BugTicketController@index
+  POST            api/bug-tickets .......................................................... BugTicketController@store
+  GET|HEAD        api/bug-tickets/unread-count .................................... BugTicketController@getUnreadCount
+  GET|HEAD        api/bug-tickets/{bugTicket} ............................................... BugTicketController@show
+  PATCH           api/bug-tickets/{bugTicket} ............................................. BugTicketController@update
+  POST            api/bug-tickets/{bugTicket}/appeal ................................ BugTicketController@submitAppeal
+  PATCH           api/bug-tickets/{bugTicket}/mark-as-read ...................... BugTicketController@markTicketAsRead
+  POST            api/bug-tickets/{bugTicket}/messages ................................... ChatMessageController@store
+  GET|HEAD        api/bug-tickets/{bugTicket}/messages ............................. ChatMessageController@getMessages
+  PATCH           api/bug-tickets/{bugTicket}/messages/mark-all-as-read .......... ChatMessageController@markAllAsRead
+  POST            api/checkout ....................................................................................... 
+  GET|HEAD        api/developers ..................................................................................... 
+  POST            api/feedbacks ............................................................. FeedbackController@store
+  PATCH           api/messages/{chatMessage}/mark-as-read ........................... ChatMessageController@markAsRead
+  GET|HEAD        api/orders ................................................................... OrderController@index
+  GET|HEAD        api/products ........................................................ StaffProdukController@apiIndex
+  GET|HEAD        api/staff-developer-chats/recent-messages .................. ChatMessageController@getRecentMessages
+  POST            api/staff-developer-chats/{otherUserId}/messages .. ChatMessageController@storeStaffDeveloperMessage
+  GET|HEAD        api/staff-developer-chats/{otherUserId}/messages ... ChatMessageController@getStaffDeveloperMessages
+  DELETE          api/staff-developer-chats/{otherUserId}/messages ChatMessageController@deleteStaffDeveloperMessages
+  GET|HEAD        api/staff-users .................................................................................... 
+  GET|HEAD        dashboard ................................................................................ dashboard
+  GET|HEAD        developer-dashboard ............................................................ developer.dashboard
+  GET|HEAD        developer-settings ........................................................ developer-settings.index
+  GET|HEAD        developer-settings/appearance ........................................ developer-settings.appearance
+  GET|HEAD        developer-settings/password ............................................ developer-settings.password
+  GET|HEAD        developer/api ........................................................................ developer.api
+  GET|HEAD        developer/chat/{staffId} ............................................................ developer.chat
+  GET|HEAD        developer/debug .................................................................... developer.debug
+  GET|HEAD        developer/developer-management ................................................ developer.management
+  GET|HEAD        developer/integration ........................................................ developer.integration
+  GET|HEAD        developer/performance ........................................................ developer.performance
+  POST            email/verification-notification verification.send › Laravel\Fortify › EmailVerificationNotification…
+  GET|HEAD        email/verify .... verification.notice › Laravel\Fortify › EmailVerificationPromptController@__invoke
+  GET|HEAD        email/verify/{id}/{hash} .... verification.verify › Laravel\Fortify › VerifyEmailController@__invoke
+  GET|HEAD        forgot-password ............ password.request › Laravel\Fortify › PasswordResetLinkController@create
+  POST            forgot-password ............... password.email › Laravel\Fortify › PasswordResetLinkController@store
+  GET|HEAD        history-pembelian ................................................................ history.pembelian
+  GET|HEAD        katalog .................................................................................... katalog
+  GET|HEAD        kelola-produk ....................... kelola.produk.developer › StaffProdukController@indexDeveloper
+  PATCH           kelola-produk/{id} ............................. kelola.produk.update › StaffProdukController@update
+  GET|HEAD        keranjang ................................................................................ keranjang
+  GET|HEAD        laporan .................................................................................... laporan
+  GET|HEAD        laporan-bug ............................................................................ laporan.bug
+  GET|HEAD        layanan-kami-lainnya .......................................................... layanan.kami.lainnya
+  GET|HEAD        login .............................. login › Laravel\Fortify › AuthenticatedSessionController@create
+  POST            login ......................... login.store › Laravel\Fortify › AuthenticatedSessionController@store
+  POST            logout ...................................................................................... logout
+  GET|HEAD        logout-confirm ......................................................................... logout.page
+  GET|HEAD        register .............................. register › Laravel\Fortify › RegisteredUserController@create
+  POST            register ......................... register.store › Laravel\Fortify › RegisteredUserController@store
+  POST            reset-password ..................... password.update › Laravel\Fortify › NewPasswordController@store
+  GET|HEAD        reset-password/{token} ............. password.reset › Laravel\Fortify › NewPasswordController@create
+  GET|HEAD        settings ............................................................................ settings.index
+  GET|HEAD        settings/appearance ................................................................ appearance.edit
+  GET|HEAD        settings/password ............................ user-password.edit › Settings\PasswordController@edit
+  PUT             settings/password ........................ user-password.update › Settings\PasswordController@update
+  GET|HEAD        settings/profile .................................... profile.edit › Settings\ProfileController@edit
+  PATCH           settings/profile ................................ profile.update › Settings\ProfileController@update
+  DELETE          settings/profile .............................. profile.destroy › Settings\ProfileController@destroy
+  GET|HEAD        settings/two-factor .............. two-factor.show › Settings\TwoFactorAuthenticationController@show
+  GET|HEAD        staff-dashboard .................................................................... staff.dashboard
+  GET|HEAD        staff/chat/{developerId} ................................................................ staff.chat
+  GET|HEAD        staff/developer-management .............................................. staff.developer.management
+  GET|HEAD        storage/{path} ....................................................................... storage.local
+  GET|HEAD        test-bug-api .......................................................................... test.bug.api
+  GET|HEAD        two-factor-challenge two-factor.login › Laravel\Fortify › TwoFactorAuthenticatedSessionController@c…
+  POST            two-factor-challenge two-factor.login.store › Laravel\Fortify › TwoFactorAuthenticatedSessionContro…
+  GET|HEAD        up ................................................................................................. 
+  GET|HEAD        user/confirm-password ...... password.confirm › Laravel\Fortify › ConfirmablePasswordController@show
+  POST            user/confirm-password password.confirm.store › Laravel\Fortify › ConfirmablePasswordController@store
+  GET|HEAD        user/confirmed-password-status password.confirmation › Laravel\Fortify › ConfirmedPasswordStatusCon…
+  POST            user/confirmed-two-factor-authentication two-factor.confirm › Laravel\Fortify › ConfirmedTwoFactorA…
+  POST            user/two-factor-authentication two-factor.enable › Laravel\Fortify › TwoFactorAuthenticationControl…
+  DELETE          user/two-factor-authentication two-factor.disable › Laravel\Fortify › TwoFactorAuthenticationContro…
+  GET|HEAD        user/two-factor-qr-code ...... two-factor.qr-code › Laravel\Fortify › TwoFactorQrCodeController@show
+  GET|HEAD        user/two-factor-recovery-codes two-factor.recovery-codes › Laravel\Fortify › RecoveryCodeController…
+  POST            user/two-factor-recovery-codes two-factor.regenerate-recovery-codes › Laravel\Fortify › RecoveryCod…
+  GET|HEAD        user/two-factor-secret-key two-factor.secret-key › Laravel\Fortify › TwoFactorSecretKeyController@s…
+  GET|HEAD        users ........................................................... users.index › UserController@index
+  POST            users ........................................................... users.store › UserController@store
+  GET|HEAD        users/create .................................................. users.create › UserController@create
+  GET|HEAD        users/{user} ...................................................... users.show › UserController@show
+  PUT|PATCH       users/{user} .................................................. users.update › UserController@update
+  DELETE          users/{user} ................................................ users.destroy › UserController@destroy
+  GET|HEAD        users/{user}/edit ................................................. users.edit › UserController@edit
+
+                                                                                                   Showing [97] routes
+

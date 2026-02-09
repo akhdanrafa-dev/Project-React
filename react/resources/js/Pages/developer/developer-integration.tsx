@@ -118,12 +118,22 @@ function DeveloperIntegrationContent() {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredProducts.map((product) => (
             <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="relative w-full aspect-square bg-gray-200 overflow-hidden">
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="h-full w-full object-cover"
-                />
+              <div className="relative w-full aspect-square bg-gray-100 overflow-hidden flex items-center justify-center border-b">
+                {product.image ? (
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                    }}
+                  />
+                ) : null}
+                <div className={product.image ? 'hidden' : 'text-center'}>
+                  <p className="text-sm font-semibold text-gray-600">{product.category}</p>
+                  <p className="text-xs text-gray-400 mt-1">{product.sku}</p>
+                </div>
               </div>
 
               <CardHeader>

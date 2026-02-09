@@ -1,7 +1,9 @@
 import { Loader2 } from "lucide-react"
 import { useState, useEffect } from "react"
+import { RefreshCw } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -63,6 +65,7 @@ function DeveloperToolsContent() {
   const { toast } = useToast()
   const [tickets, setTickets] = useState<BugTicket[]>([])
   const [loading, setLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [updatingTicketId, setUpdatingTicketId] = useState<number | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -70,10 +73,9 @@ function DeveloperToolsContent() {
   useEffect(() => {
     fetchTickets()
 
-    // Polling untuk update real-time setiap 5 detik
     const interval = setInterval(() => {
       fetchTickets()
-    }, 5000) // 5 detik
+    }, 3000)
 
     return () => clearInterval(interval)
   }, [])
@@ -84,10 +86,10 @@ function DeveloperToolsContent() {
       if (!response.ok) throw new Error("Gagal mengambil ticket")
 
       const data = await response.json()
-      // Force re-render dengan membuat array baru
+      console.log("Fetched tickets with assignedAdmin:", data)
       setTickets([...data])
-      // Increment refreshKey untuk memaksa re-render Table
       setRefreshKey(prev => prev + 1)
+      setLoading(false)
     } catch (error) {
       console.error("Error fetching tickets:", error)
       toast({
@@ -95,7 +97,18 @@ function DeveloperToolsContent() {
         description: "Gagal mengambil data ticket",
         variant: "destructive",
       })
+      setLoading(false)
     }
+  }
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    await fetchTickets()
+    setIsRefreshing(false)
+    toast({
+      title: "Sukses",
+      description: "Data telah diperbarui",
+    })
   }
 
   const getPriorityValue = (priority: string) => {
@@ -216,66 +229,7 @@ function DeveloperToolsContent() {
     }
   }
 
-  const assignTicketToSelf = async (ticketId: number) => {
-    setUpdatingTicketId(ticketId)
 
-    try {
-      const csrfToken = getCsrfToken()
-
-      const response = await fetch(`/api/bug-tickets/${ticketId}/take`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-CSRF-Token": csrfToken || "",
-        },
-        body: JSON.stringify({
-          assigned_to: null, // Will be set to current user in backend
-          status: 'in_progress'
-        }),
-      })
-
-      const contentType = response.headers.get("content-type") ?? ""
-      const payload = contentType.includes("application/json")
-        ? await response.json()
-        : { message: await response.text() }
-
-      if (!response.ok) {
-        const errorMsg = payload?.message || payload?.error || `Error ${response.status}`
-        throw new Error(errorMsg)
-      }
-
-      // Update the ticket in local state
-      setTickets((prevTickets) =>
-        prevTickets.map((ticket) =>
-          ticket.id === ticketId
-            ? {
-                ...ticket,
-                status: 'in_progress',
-                assigned_to: payload.assigned_to,
-                assignedAdmin: payload.assignedAdmin
-              }
-            : ticket
-        )
-      )
-
-      toast({
-        title: "Sukses",
-        description: "Tiket berhasil diambil",
-      })
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Gagal mengambil tiket"
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      })
-    } finally {
-      setUpdatingTicketId(null)
-    }
-  }
 
   const filteredTickets = tickets
     .filter(
@@ -322,6 +276,16 @@ function DeveloperToolsContent() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="max-w-sm"
               />
+              <Button
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                size="sm"
+                variant="outline"
+                className="gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Memperbarui...' : 'Segarkan'}
+              </Button>
             </div>
 
             <Separator />
@@ -379,19 +343,12 @@ function DeveloperToolsContent() {
                           <TableCell>{getStatusBadge(ticket.status)}</TableCell>
                           <TableCell>
                             {ticket.assignedAdmin ? (
-                              <span className="text-sm">Sudah di handle oleh {ticket.assignedAdmin.name}</span>
-                            ) : (
                               <div className="flex items-center gap-2">
-                                <Badge variant="secondary">Belum di handle</Badge>
-                                <button
-                                  onClick={() => assignTicketToSelf(ticket.id)}
-                                  disabled={updatingTicketId === ticket.id}
-                                  className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title="Ambil tiket ini"
-                                >
-                                  {updatingTicketId === ticket.id ? '...' : 'Ambil'}
-                                </button>
+                                <Badge className="bg-blue-100 text-blue-800">TerHandle</Badge>
+                                <span className="text-sm font-medium text-gray-700">{ticket.assignedAdmin.name}</span>
                               </div>
+                            ) : (
+                              <Badge variant="secondary" className="bg-gray-100 text-gray-800">Belum di handle</Badge>
                             )}
                           </TableCell>
                         </TableRow>

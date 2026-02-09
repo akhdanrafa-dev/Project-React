@@ -11,6 +11,7 @@ use App\Http\Controllers\ChatMessageController;
 use App\Http\Controllers\AdminITController;
 use App\Http\Controllers\StaffProdukController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\AlertController;
 
 /*
 |--------------------------------------------------------------------------
@@ -53,6 +54,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware(['staff'])->group(function () {
         Route::get('/staff-dashboard', fn () => Inertia::render('staff-dashboard'))
             ->name('staff.dashboard');
+        
+        Route::get('/staff-alerts', fn () => Inertia::render('staff-alerts'))
+            ->name('staff.alerts');
     });
 
     Route::get('/developer-dashboard', fn () => Inertia::render('developer-dashboard'))
@@ -130,6 +134,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'update']);
     Route::get('/api/bug-tickets/unread-count', [BugTicketController::class, 'getUnreadCount']);
     Route::patch('/api/bug-tickets/{bugTicket}/mark-as-read', [BugTicketController::class, 'markTicketAsRead']);
+    Route::patch('/api/bug-tickets/{bugTicket}/take', [BugTicketController::class, 'take']);
     Route::post('/api/bug-tickets/{bugTicket}/appeal', [BugTicketController::class, 'submitAppeal']);
 
     /*
@@ -202,13 +207,37 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Staff Produk
+    | Kelola Produk - Staff & Developer
     |--------------------------------------------------------------------------
     */
-    Route::middleware(['staff'])->group(function () {
-        Route::get('/kelola-produk', [StaffProdukController::class, 'index'])
-            ->name('kelola.produk');
-    });
+    Route::get('/kelola-produk', [StaffProdukController::class, 'index'])
+        ->name('kelola.produk')
+        ->middleware('auth');
+    
+    Route::patch('/kelola-produk/{id}', [StaffProdukController::class, 'update'])
+        ->name('kelola.produk.update')
+        ->middleware(['auth', 'developer']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Product Alerts - Developer & Staff
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/alerts', [AlertController::class, 'store'])
+        ->name('alerts.store')
+        ->middleware(['auth', 'developer']);
+    
+    Route::get('/alerts/staff', [AlertController::class, 'getStaffAlerts'])
+        ->name('alerts.staff')
+        ->middleware(['auth', 'staff']);
+
+    Route::get('/alerts/staff/history', [AlertController::class, 'getStaffAlertsHistory'])
+        ->name('alerts.staff.history')
+        ->middleware(['auth', 'staff']);
+    
+    Route::patch('/alerts/{alert}', [AlertController::class, 'complete'])
+        ->name('alerts.complete')
+        ->middleware(['auth', 'staff']);
 
     /*
     |--------------------------------------------------------------------------
@@ -283,6 +312,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/test-bug-api', fn () => Inertia::render('test-bug-api'))
         ->name('test.bug.api');
+
+    Route::get('/debug-products', function () {
+        $products = \App\Models\Product::with('category')->get();
+        return response()->json([
+            'total' => $products->count(),
+            'products' => $products->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'category' => $p->category?->name ?? 'No category',
+            ])
+        ]);
+    });
 
     /*
     |--------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import {
   BookOpen,
   AudioWaveform,
   Code2,
+  Bell,
 } from "lucide-react"
 import * as React from "react"
 
@@ -53,6 +54,11 @@ const data = {
           title: "Kelola Produk", 
           url: "/kelola-produk",
           icon: Package,
+        },
+        { 
+          title: "Notifikasi Produk", 
+          url: "/staff-alerts",
+          icon: Bell,
         },
         { 
           title: "Manajemen Developer", 

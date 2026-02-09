@@ -1,18 +1,26 @@
-# TODO: Fix Staff Chat Issue
+# TODO: Implementasi Ikon Tanda Seru untuk Developer di Kelola Produk
 
-## Issue: Staff cannot send messages to developers
-- Root cause: Missing `/api/developers` endpoint
-- Frontend tries to fetch developers but endpoint doesn't exist
+## Tugas Utama
+- Tambahkan ikon tanda seru (!) di setiap produk untuk role developer
+- Ikon untuk memberi tahu staff tentang stok menipis atau perubahan nama/deskripsi
+- Klik ikon muncul dropdown dengan 3 opsi: ubah stok, ubah nama, ubah deskripsi
+- Setiap opsi buka form dengan input nilai baru + textarea keterangan
 
-## Completed Tasks
-- [x] Added `/api/developers` endpoint to `routes/api.php`
-- [x] Endpoint returns list of developers with required fields
+## Langkah Implementasi
+- [x] Tambahkan 'role' => auth()->user()->role ke props di StaffProdukController.php
+- [x] Update interface Props di kelola-produk.tsx untuk include role
+- [x] Tambahkan kolom baru di tabel untuk ikon tanda seru (hanya untuk developer)
+- [x] Implementasi DropdownMenu dengan 3 opsi
+- [x] Buat Dialog form untuk setiap opsi (ubah stok, nama, deskripsi)
+- [x] Tambahkan state management untuk dialog dan form
+- [x] Implementasi submit form dengan router.patch ke endpoint update
+- [x] Test implementasi: ikon muncul hanya developer, dropdown & form berfungsi
 
-## Pending Tasks
-- [ ] Test the staff chat functionality
-- [ ] Verify staff can access developer management page
-- [ ] Verify staff can send messages to developers
-- [ ] Check for any other missing dependencies
+## File yang Akan Diedit
+- react/app/Http/Controllers/StaffProdukController.php
+- react/resources/js/Pages/kelola-produk.tsx
 
-## Files Modified
-- `routes/api.php`: Added `/api/developers` endpoint
+## Catatan
+- Pastikan hanya role developer yang melihat ikon
+- Form include field untuk nilai baru + keterangan
+- Update produk via PATCH request

@@ -71,6 +71,8 @@ const baseProducts = [
     image:
       "https://www.static-src.com/wcsstore/Indraprastha/images/catalog/full/catalog-image/MTA-143215499/vortex_series_vortexseries_mono_series_65_-_75_-_87_layout_flexcut_wired_gasket_mount_keyboard_full03_mgtq582o.jpg",
     category: "keyboard",
+    stock: 18,
+    sku: "PRD-0001",
   },
   {
     id: 2,
@@ -79,6 +81,8 @@ const baseProducts = [
     image:
       "https://www.static-src.com/wcsstore/Indraprastha/images/catalog/full/catalog-image/MTA-143101682/ajazz_ajazz_ak820_monochrome_-_mechanical_keyboard_full03_rsbvkk6i.jpg",
     category: "keyboard",
+    stock: 21,
+    sku: "PRD-0002",
   },
   {
     id: 3,
@@ -87,6 +91,8 @@ const baseProducts = [
     image:
       "https://www.static-src.com/wcsstore/Indraprastha/images/catalog/full/catalog-image/96/MTA-182618402/furycube_furycube_g11_-_g-11_ultra_lightweight_wireless_gaming_mouse_paw3311_full02_jbdwjvnv.jpg",
     category: "mouse",
+    stock: 26,
+    sku: "PRD-0003",
   },
   {
     id: 4,
@@ -95,6 +101,8 @@ const baseProducts = [
     image:
       "https://down-id.img.susercontent.com/file/id-11134207-7rasi-m5ds47okj4sm07.webp",
     category: "mouse",
+    stock: 29,
+    sku: "PRD-0004",
   },
   {
     id: 5,
@@ -103,6 +111,8 @@ const baseProducts = [
     image:
       "https://fantech.id/cdn/shop/files/MAINPIC-DESKMATKOBOFINAL.webp?v=1757398074&width=533",
     category: "mousepad",
+    stock: 22,
+    sku: "PRD-0005",
   },
   {
     id: 6,
@@ -111,6 +121,8 @@ const baseProducts = [
     image:
       "https://fantech.id/cdn/shop/files/MAINPIC-WG9KOBOHOLOLIVEFINAL.webp?v=1757386512",
     category: "mouse",
+    stock: 25,
+    sku: "PRD-0006",
   },
   {
     id: 7,
@@ -119,6 +131,8 @@ const baseProducts = [
     image:
       "https://fantech.id/cdn/shop/files/MAINPIC-DESKMATZETAFINAL.webp?v=1757393609&width=533",
     category: "mousepad",
+    stock: 28,
+    sku: "PRD-0007",
   },
   {
     id: 8,
@@ -127,6 +141,8 @@ const baseProducts = [
     image:
       "https://fantech.id/cdn/shop/files/MAINPIC-WG9ZETAHOLOLIVEFINAL.webp?v=1757392944",
     category: "mouse",
+    stock: 31,
+    sku: "PRD-0008",
   },
   {
     id: 9,
@@ -135,6 +151,8 @@ const baseProducts = [
     image:
       "https://www.static-src.com/wcsstore/Indraprastha/images/catalog/full/catalog-image/MTA-178490843/xiaomi_monitor_led_xiaomi_g24i_24-_fast_ips_1080p_fhd_180hz_1ms_gtg_hdmi_2-0x1_dp_1-4x1_hdr_calibrated_individually_rapid_response_low_latency_freesync_silky_full02_e1enb7wz.webp",
     category: "monitor",
+    stock: 8,
+    sku: "PRD-0009",
   },
   {
     id: 10,
@@ -143,6 +161,8 @@ const baseProducts = [
     image:
       "https://down-id.img.susercontent.com/file/id-11134207-8224w-mk0fl6pk2jnk94.webp",
     category: "monitor",
+    stock: 11,
+    sku: "PRD-0010",
   },
   {
     id: 11,
@@ -151,6 +171,8 @@ const baseProducts = [
     image:
       "https://down-id.img.susercontent.com/file/id-11134207-81ztm-mdy3znad8r2df6.webp",
     category: "chair",
+    stock: 6,
+    sku: "PRD-0011",
   },
   {
     id: 12,
@@ -159,6 +181,8 @@ const baseProducts = [
     image:
       "https://down-id.img.susercontent.com/file/sg-11134201-7ravq-maz6ojp343tu0c.webp",
     category: "accessories",
+    stock: 30,
+    sku: "PRD-0012",
   },
   {
     id: 13,
@@ -167,6 +191,8 @@ const baseProducts = [
     image:
       "https://down-id.img.susercontent.com/file/id-11134207-82251-mh5vdql5ua6l3a.webp",
     category: "accessories",
+    stock: 33,
+    sku: "PRD-0013",
   },
   {
     id: 14,
@@ -175,6 +201,8 @@ const baseProducts = [
     image:
       "https://down-id.img.susercontent.com/file/id-11134207-81zto-me8xh4zhy96v26.webp",
     category: "gamepad",
+    stock: 14,
+    sku: "PRD-0014",
   },
   {
     id: 15,
@@ -183,6 +211,8 @@ const baseProducts = [
     image:
       "https://down-id.img.susercontent.com/file/id-11134207-81ztk-meo4vzhy3ymb79.webp",
     category: "gamepad",
+    stock: 17,
+    sku: "PRD-0015",
   },
   {
     id: 16,
@@ -191,28 +221,9 @@ const baseProducts = [
     image:
       "https://down-id.img.susercontent.com/file/id-11134207-81ztc-mf7qlksrkhe731.webp",
     category: "accessories",
+    stock: 36,
+    sku: "PRD-0016",
   },
 ]
 
-const defaultStockByCategory: Record<string, number> = {
-  keyboard: 18,
-  mouse: 26,
-  mousepad: 22,
-  monitor: 8,
-  accessories: 30,
-  gamepad: 14,
-  chair: 6,
-}
-
-const createSku = (id: number) => `PRD-${String(id).padStart(4, "0")}`
-
-export const initialCatalogProducts: CatalogProduct[] = baseProducts.map(
-  (product, index) => {
-    const baseStock = defaultStockByCategory[product.category] ?? 10
-    return {
-      ...product,
-      sku: createSku(product.id),
-      stock: baseStock + (index % 3) * 3,
-    }
-  }
-)
+export const initialCatalogProducts: CatalogProduct[] = baseProducts
