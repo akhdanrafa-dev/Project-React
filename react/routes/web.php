@@ -10,6 +10,7 @@ use App\Http\Controllers\BugTicketController;
 use App\Http\Controllers\ChatMessageController;
 use App\Http\Controllers\AdminITController;
 use App\Http\Controllers\StaffProdukController;
+use App\Http\Controllers\OrderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -156,17 +157,40 @@ Route::middleware(['auth', 'verified'])->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::get('/api/staff-users', function () {
-        return response()->json(
-            \App\Models\User::where('role', 'staff')->get()->map(function ($user) {
+        return response()->json([
+            'users' => \App\Models\User::where('role', 'staff')->get()->map(function ($user) {
                 return [
                     'id' => $user->id,
                     'name' => $user->name,
+                    'username' => $user->name,
                     'role' => $user->role,
-                    'status' => 'active', // Default status
+                    'is_active' => true,
+                    'status' => 'active',
                     'lastSeen' => now()->subMinutes(rand(1, 60))->toISOString(),
                 ];
             })
-        );
+        ]);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Developers API (for staff chat)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/api/developers', function () {
+        return response()->json([
+            'users' => \App\Models\User::where('role', 'developer')->get()->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'username' => $user->name,
+                    'role' => $user->role,
+                    'is_active' => true,
+                    'status' => 'active',
+                    'lastSeen' => now()->subMinutes(rand(1, 60))->toISOString(),
+                ];
+            })
+        ]);
     });
 
     /*
@@ -210,6 +234,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     | Developer Routes
     |--------------------------------------------------------------------------
     */
+    Route::middleware(['staff'])->group(function () {
+        Route::get('/staff/developer-management', fn () => Inertia::render('staff-developer-management'))
+            ->name('staff.developer.management');
+
+        Route::get('/staff/chat/{developerId}', function ($developerId) {
+            return Inertia::render('staff-developer-chat', [
+                'developerId' => (int) $developerId,
+            ]);
+        })->name('staff.chat');
+    });
+
     Route::middleware(['developer'])->group(function () {
         Route::get('/developer/api', function () {
             return Inertia::render('kelola-pengguna', [
@@ -238,6 +273,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 'staffId' => (int) $staffId,
             ]);
         })->name('developer.chat');
+
+        Route::get('/developer/developer-management', fn () => Inertia::render('staff-developer-management'))
+            ->name('developer.management');
     });
 
     Route::get('/laporan-bug', fn () => Inertia::render('laporan-bug'))
@@ -255,6 +293,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/keranjang', fn () => Inertia::render('keranjang'))->name('keranjang');
     Route::get('/history-pembelian', fn () => Inertia::render('history-pembelian'))->name('history.pembelian');
     Route::get('/layanan-kami-lainnya', fn () => Inertia::render('layanan-kami-lainnya'))->name('layanan.kami.lainnya');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Orders API
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/api/orders', [OrderController::class, 'index']);
 
     /*
     |--------------------------------------------------------------------------

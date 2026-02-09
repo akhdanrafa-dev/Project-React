@@ -2,11 +2,14 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\OrderController;
 use App\Models\User;
 
 Route::post('/feedbacks', [FeedbackController::class, 'store']);
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('/orders', [OrderController::class, 'index']);
+
     Route::get('/staff-users', function () {
         return response()->json(
             User::where('role', 'staff')->get()->map(function ($user) {
