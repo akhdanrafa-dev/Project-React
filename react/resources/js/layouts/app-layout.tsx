@@ -8,8 +8,13 @@ import { AppSidebar } from "@/layouts/app/component/AppSidebar"
 import { CartProvider } from "@/layouts/app/context/CartContext"
 import { CatalogProvider } from "@/layouts/app/context/CatalogContext"
 import { ThemeProvider } from "@/layouts/app/context/ThemeContext"
+import type { BreadcrumbItem } from "@/types"
 
-export default function AppLayout({ children }: PropsWithChildren) {
+type AppLayoutProps = PropsWithChildren<{
+  breadcrumbs?: BreadcrumbItem[]
+}>
+
+export default function AppLayout({ children }: AppLayoutProps) {
   return (
     <ThemeProvider>
       <CatalogProvider>

@@ -10,14 +10,36 @@ class AlertController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
+            'product_id' => 'nullable|integer',
+            'product_sku' => 'nullable|string',
             'alert_type' => 'required|in:stock,name,description',
             'new_value' => 'nullable|string',
             'description' => 'required|string',
         ]);
 
+        if (empty($validated['product_id']) && empty($validated['product_sku'])) {
+            return response()->json([
+                'message' => 'Product ID or SKU is required.',
+            ], 422);
+        }
+
+        $product = null;
+        if (!empty($validated['product_id'])) {
+            $product = \App\Models\Product::find($validated['product_id']);
+        }
+
+        if (!$product && !empty($validated['product_sku'])) {
+            $product = \App\Models\Product::where('sku', $validated['product_sku'])->first();
+        }
+
+        if (!$product) {
+            return response()->json([
+                'message' => 'Produk tidak ditemukan.',
+            ], 422);
+        }
+
         $alert = ProductAlert::create([
-            'product_id' => $validated['product_id'],
+            'product_id' => $product->id,
             'developer_id' => auth()->id(),
             'alert_type' => $validated['alert_type'],
             'new_value' => $validated['new_value'],

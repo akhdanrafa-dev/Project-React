@@ -46,7 +46,7 @@ const data = {
       isActive: true,
       items: [
         { 
-          title: "Home", 
+          title: "Beranda", 
           url: "/staff-dashboard",
           icon: Home,
         },
@@ -66,7 +66,7 @@ const data = {
           icon: Code2,
         },
         { 
-          title: "Settings", 
+          title: "Pengaturan", 
           url: "/settings",
           icon: Settings,
         },
@@ -98,7 +98,6 @@ export function StaffSidebar(
           </div>
           <div className="flex flex-col flex-1">
             <span className="text-sm font-semibold">Staff Panel</span>
-            <span className="text-xs text-muted-foreground">v1.0</span>
           </div>
         </div>
       </SidebarHeader>
@@ -110,15 +109,7 @@ export function StaffSidebar(
       <SidebarFooter className="flex flex-col gap-2">
         <NavUser user={{ name: user.name || "Staff", email: user.email || "staff@example.com", avatar: "/avatar/staff.jpg" }} />
 
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={handleLogout}
-          className="w-full gap-2"
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </Button>
+      
       </SidebarFooter>
 
       <SidebarRail />

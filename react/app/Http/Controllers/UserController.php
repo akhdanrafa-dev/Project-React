@@ -41,7 +41,14 @@ class UserController extends Controller
 
         $validated['password'] = bcrypt($validated['password']);
 
-        User::create($validated);
+        $user = User::create($validated);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'User created successfully.',
+                'user' => $user,
+            ], 201);
+        }
 
         return redirect()->route('users.index')->with('success', 'User created successfully.');
     }
@@ -86,6 +93,13 @@ class UserController extends Controller
 
         $user->update($validated);
 
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'User updated successfully.',
+                'user' => $user->fresh(),
+            ]);
+        }
+
         return redirect()->route('users.index')->with('success', 'User updated successfully.');
     }
 
@@ -95,6 +109,12 @@ class UserController extends Controller
     public function destroy(User $user)
     {
         $user->delete();
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'message' => 'User deleted successfully.',
+            ]);
+        }
 
         return redirect()->route('users.index')->with('success', 'User deleted successfully.');
     }

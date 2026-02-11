@@ -142,6 +142,32 @@ export function CatalogProvider({
     }
   }, [products, isHydrated])
 
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY) return
+
+      if (!event.newValue) {
+        setProducts(initialCatalogProducts)
+        return
+      }
+
+      try {
+        const parsed = JSON.parse(event.newValue)
+        setProducts(normalizeProducts(parsed))
+      } catch (error) {
+        console.error(
+          "Failed to parse catalog data from storage event:",
+          error
+        )
+      }
+    }
+
+    window.addEventListener("storage", handleStorage)
+    return () => {
+      window.removeEventListener("storage", handleStorage)
+    }
+  }, [])
+
   function addProduct(product: CatalogProductInput) {
     setProducts((prev) => {
       const nextId = prev.length
@@ -258,4 +284,8 @@ export function useCatalog() {
     )
   }
   return context
+}
+
+export function useCatalogOptional() {
+  return useContext(CatalogContext)
 }

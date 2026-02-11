@@ -50,7 +50,7 @@ const data = {
         { title: "Katalog", url: "/katalog" },
         { title: "Keranjang", url: "/keranjang" },
         { title: "Riwayat Pembelian", url: "/history-pembelian" },
-        { title: "Settings", url: "/settings/appearance" },
+        { title: "Pengaturan", url: "/settings/appearance" },
       ],
     },
     {
@@ -68,7 +68,7 @@ const data = {
       isActive: true,
       items: [
         { title: "Beranda", url: "/dashboard" },
-        { title: "Settings", url: editAppearance().url },
+        { title: "Pengaturan", url: editAppearance().url },
       ],
     },
     {

@@ -5,8 +5,8 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { CatalogProvider } from './layouts/app/context/CatalogContext';
 import { initializeTheme } from './hooks/use-appearance';
+import { CatalogProvider } from './layouts/app/context/CatalogContext';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 

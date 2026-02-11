@@ -1,5 +1,5 @@
 import { usePage } from "@inertiajs/react"
-import { Loader2 } from "lucide-react"
+import { Loader2, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import { TicketResolutionModal } from "@/components/ticket-resolution-modal"
@@ -67,6 +67,8 @@ function UserLaporanContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedResolutionTicket, setSelectedResolutionTicket] = useState<BugTicket | null>(null)
   const [resolutionModalOpen, setResolutionModalOpen] = useState(false)
+  const [deletingTicketId, setDeletingTicketId] = useState<number | null>(null)
+  const [deletingAllClosed, setDeletingAllClosed] = useState(false)
 
   useEffect(() => {
     fetchTickets()
@@ -196,6 +198,96 @@ function UserLaporanContent() {
         description: error instanceof Error ? error.message : "Terjadi kesalahan",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleDeleteClosedTicket = async (ticketId: number) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus laporan ini? Tindakan ini tidak dapat dibatalkan.")) {
+      return
+    }
+
+    setDeletingTicketId(ticketId)
+    try {
+      const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
+
+      const response = await fetch(`/api/bug-tickets/${ticketId}`, {
+        method: "DELETE",
+        headers: {
+          "X-CSRF-Token": csrfToken || "",
+        },
+        credentials: "same-origin",
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: "Gagal menghapus tiket" }))
+        throw new Error(error.message || "Gagal menghapus tiket")
+      }
+
+      toast({
+        title: "Sukses",
+        description: "Laporan telah dihapus",
+      })
+
+      fetchTickets()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingTicketId(null)
+    }
+  }
+
+  const handleDeleteAllClosedTickets = async () => {
+    const closedTicketsCount = tickets.filter(t => t.status?.toLowerCase() === 'closed').length
+    if (closedTicketsCount === 0) {
+      toast({
+        title: "Informasi",
+        description: "Tidak ada laporan yang ditutup untuk dihapus",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!confirm(`Apakah Anda yakin ingin menghapus ${closedTicketsCount} laporan yang sudah ditutup? Tindakan ini tidak dapat dibatalkan.`)) {
+      return
+    }
+
+    setDeletingAllClosed(true)
+    try {
+      const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
+      const closedTickets = tickets.filter(t => t.status?.toLowerCase() === 'closed')
+
+      for (const ticket of closedTickets) {
+        const response = await fetch(`/api/bug-tickets/${ticket.id}`, {
+          method: "DELETE",
+          headers: {
+            "X-CSRF-Token": csrfToken || "",
+          },
+          credentials: "same-origin",
+        })
+
+        if (!response.ok) {
+          throw new Error(`Gagal menghapus laporan ${ticket.id}`)
+        }
+      }
+
+      toast({
+        title: "Sukses",
+        description: `${closedTicketsCount} laporan telah dihapus`,
+      })
+
+      fetchTickets()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingAllClosed(false)
     }
   }
 
@@ -393,9 +485,21 @@ function UserLaporanContent() {
 
               {closedTickets.length > 0 && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold">Tiket Ditutup</h3>
-                    <Badge variant="secondary">{closedTickets.length}</Badge>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold">Tiket Ditutup</h3>
+                      <Badge variant="secondary">{closedTickets.length}</Badge>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={handleDeleteAllClosedTickets}
+                      disabled={deletingAllClosed}
+                      className="gap-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {deletingAllClosed ? "Menghapus..." : "Hapus Semua"}
+                    </Button>
                   </div>
                   <div className="rounded-lg border overflow-x-auto">
                     <Table>
@@ -409,6 +513,7 @@ function UserLaporanContent() {
                           <TableHead>Tingkat Kesulitan</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Ditangani Oleh</TableHead>
+                          <TableHead className="w-20">Aksi</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -433,6 +538,18 @@ function UserLaporanContent() {
                               ) : (
                                 <Badge variant="secondary">Belum di handle</Badge>
                               )}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteClosedTicket(ticket.id)}
+                                disabled={deletingTicketId === ticket.id}
+                                className="text-red-600 hover:text-red-800 hover:bg-red-50 gap-1"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                {deletingTicketId === ticket.id ? "..." : "Hapus"}
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}

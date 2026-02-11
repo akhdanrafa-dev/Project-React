@@ -89,6 +89,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     | Admin IT Statistics & Ranking
     |--------------------------------------------------------------------------
     */
+    
+    // Page Routes (harus didefinisikan sebelum API routes)
+    Route::get('/admin-it/statistics-page', function () {
+        return Inertia::render('AdminITStatistics');
+    })->name('admin-it.statistics.page');
+
+    Route::get('/admin-it/ranking-admin', function () {
+        return Inertia::render('admin-it-ranking-admin');
+    })->middleware('developer')->name('admin-it.ranking-admin');
+
+    // API Routes
     Route::get(
         '/admin-it/statistics/{adminId}',
         [BugTicketController::class, 'getAdminStats']
@@ -97,11 +108,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get(
         '/admin-it/rankings',
         [BugTicketController::class, 'getAllAdminsRanking']
-    )->name('admin-it.rankings');
+    )->middleware('developer')->name('admin-it.rankings');
 
-    Route::get('/admin-it/statistics-page', function () {
-        return Inertia::render('AdminITStatistics');
-    })->name('admin-it.statistics.page');
+    Route::get(
+        '/admin-it/rankings/activity-stats',
+        [BugTicketController::class, 'getAdminActivityStats']
+    )->middleware('developer')->name('admin-it.rankings.activity');
 
     /*
     |--------------------------------------------------------------------------
@@ -132,6 +144,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/api/bug-tickets', [BugTicketController::class, 'store']);
     Route::get('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'show']);
     Route::patch('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'update']);
+    Route::delete('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'destroy']);
     Route::get('/api/bug-tickets/unread-count', [BugTicketController::class, 'getUnreadCount']);
     Route::patch('/api/bug-tickets/{bugTicket}/mark-as-read', [BugTicketController::class, 'markTicketAsRead']);
     Route::patch('/api/bug-tickets/{bugTicket}/take', [BugTicketController::class, 'take']);
@@ -287,6 +300,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 }),
             ]);
         })->name('developer.api');
+
+        Route::get('/developer/pantau-produk', fn () => Inertia::render('developer/pantau-produk'))
+            ->name('developer.pantau-produk');
 
         Route::get('/developer/integration', fn () => Inertia::render('developer/developer-integration'))
             ->name('developer.integration');

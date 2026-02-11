@@ -1,15 +1,15 @@
 import { Loader2 } from "lucide-react"
-import { useState, useEffect } from "react"
 import { RefreshCw } from "lucide-react"
+import { useState, useEffect } from "react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
 } from "@/components/ui/breadcrumb"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -248,6 +248,7 @@ function DeveloperToolsContent() {
 
 
   const filteredTickets = tickets
+    .filter((ticket) => ticket.status?.toLowerCase() !== 'closed')
     .filter(
       (ticket) =>
         ticket.ticket_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||

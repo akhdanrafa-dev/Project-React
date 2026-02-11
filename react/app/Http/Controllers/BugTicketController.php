@@ -140,6 +140,37 @@ class BugTicketController extends Controller
         }
     }
 
+    public function destroy(BugTicket $bugTicket)
+    {
+        try {
+            $this->authorize('delete', $bugTicket);
+
+            if ($bugTicket->status !== 'closed') {
+                return response()->json([
+                    'error' => 'Invalid status',
+                    'message' => 'Hanya tiket yang sudah ditutup yang dapat dihapus.',
+                ], 422);
+            }
+
+            $bugTicket->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Tiket berhasil dihapus',
+            ]);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json([
+                'error' => 'Unauthorized',
+                'message' => 'Anda tidak memiliki izin untuk menghapus tiket ini',
+            ], 403);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Server Error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
 
     public function getUnreadCount()
     {
@@ -392,5 +423,56 @@ class BugTicketController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function getAdminActivityStats()
+    {
+        $admins = \App\Models\User::where('role', 'admin_it')->get();
+        
+        $stats = $admins->map(function ($admin) {
+            $totalTickets = BugTicket::where('assigned_to', $admin->id)->count();
+            $resolved = BugTicket::where('assigned_to', $admin->id)
+                ->whereIn('status', ['resolved', 'closed'])
+                ->count();
+            $inProgress = BugTicket::where('assigned_to', $admin->id)
+                ->where('status', 'in_progress')
+                ->count();
+            $pending = BugTicket::where('assigned_to', $admin->id)
+                ->where('status', 'open')
+                ->count();
+            
+            $thisMonth = now()->startOfMonth();
+            $thisYear = now()->startOfYear();
+            
+            $thisMonthTickets = BugTicket::where('assigned_to', $admin->id)
+                ->whereDate('taken_at', '>=', $thisMonth)
+                ->count();
+            
+            $thisYearTickets = BugTicket::where('assigned_to', $admin->id)
+                ->whereDate('taken_at', '>=', $thisYear)
+                ->count();
+            
+            $avgResolution = $this->calculateAverageResolutionTime($admin->id);
+            $performanceScore = $this->calculatePerformanceScore($admin->id, $resolved, $totalTickets, $avgResolution);
+            
+            return [
+                'id' => $admin->id,
+                'name' => $admin->name,
+                'email' => $admin->email,
+                'total_tickets' => $totalTickets,
+                'resolved' => $resolved,
+                'in_progress' => $inProgress,
+                'pending' => $pending,
+                'this_month' => $thisMonthTickets,
+                'this_year' => $thisYearTickets,
+                'average_resolution_hours' => $avgResolution,
+                'performance_score' => $performanceScore,
+                'resolution_rate' => $totalTickets > 0 ? round(($resolved / $totalTickets) * 100, 2) : 0,
+                'created_at' => $admin->created_at,
+                'updated_at' => $admin->updated_at,
+            ];
+        })->sortByDesc('performance_score')->values();
+
+        return response()->json($stats);
     }
 }

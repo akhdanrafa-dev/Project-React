@@ -1,5 +1,5 @@
 import { usePage } from "@inertiajs/react"
-import { Loader2, Plus, MessageSquare } from "lucide-react"
+import { Loader2, Plus, MessageSquare, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import { BugReportChat } from "@/components/bug-report-chat"
@@ -65,6 +65,8 @@ function LaporanBugContent() {
   const [chatOpen, setChatOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
+  const [deletingTicketId, setDeletingTicketId] = useState<number | null>(null)
+  const [deletingAllClosed, setDeletingAllClosed] = useState(false)
 
   useEffect(() => {
     fetchTickets()
@@ -162,13 +164,113 @@ function LaporanBugContent() {
     setChatOpen(true)
   }
 
+  const handleDeleteClosedTicket = async (ticketId: number) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus laporan ini? Tindakan ini tidak dapat dibatalkan.")) {
+      return
+    }
+
+    setDeletingTicketId(ticketId)
+    try {
+      const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
+      const response = await fetch(`/api/bug-tickets/${ticketId}`, {
+        method: "DELETE",
+        headers: {
+          "X-CSRF-Token": csrfToken || "",
+        },
+        credentials: "same-origin",
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: "Gagal menghapus tiket" }))
+        throw new Error(error.message || "Gagal menghapus tiket")
+      }
+
+      toast({
+        title: "Sukses",
+        description: "Laporan telah dihapus",
+      })
+
+      if (selectedTicket?.id === ticketId) {
+        setSelectedTicket(null)
+        setChatOpen(false)
+      }
+
+      fetchTickets()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingTicketId(null)
+    }
+  }
+
+  const handleDeleteAllClosedTickets = async () => {
+    const closedTickets = tickets.filter((ticket) => ticket.status === "closed")
+    if (closedTickets.length === 0) {
+      toast({
+        title: "Informasi",
+        description: "Tidak ada laporan yang ditutup untuk dihapus",
+      })
+      return
+    }
+
+    if (!confirm(`Apakah Anda yakin ingin menghapus ${closedTickets.length} laporan yang sudah ditutup? Tindakan ini tidak dapat dibatalkan.`)) {
+      return
+    }
+
+    setDeletingAllClosed(true)
+    try {
+      const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
+
+      for (const ticket of closedTickets) {
+        const response = await fetch(`/api/bug-tickets/${ticket.id}`, {
+          method: "DELETE",
+          headers: {
+            "X-CSRF-Token": csrfToken || "",
+          },
+          credentials: "same-origin",
+        })
+
+        if (!response.ok) {
+          throw new Error(`Gagal menghapus laporan ${ticket.id}`)
+        }
+      }
+
+      toast({
+        title: "Sukses",
+        description: `${closedTickets.length} laporan telah dihapus`,
+      })
+
+      if (selectedTicket && closedTickets.some((ticket) => ticket.id === selectedTicket.id)) {
+        setSelectedTicket(null)
+        setChatOpen(false)
+      }
+
+      fetchTickets()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingAllClosed(false)
+    }
+  }
+
   const filteredTickets = tickets.filter((ticket) => {
     const matchSearch =
       ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.description.toLowerCase().includes(searchQuery.toLowerCase())
     const matchStatus = !filterStatus || ticket.status === filterStatus
-    return matchSearch && matchStatus
+    const showClosed = filterStatus === 'closed'
+    const isClosed = ticket.status === 'closed'
+    return matchSearch && matchStatus && (!isClosed || showClosed)
   })
+  const closedTickets = tickets.filter((ticket) => ticket.status === "closed")
 
   return (
     <>
@@ -269,7 +371,25 @@ function LaporanBugContent() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4">
+          <>
+            {filterStatus === "closed" && closedTickets.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                <p className="text-sm text-muted-foreground">
+                  Total tiket ditutup: {closedTickets.length}
+                </p>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleDeleteAllClosedTickets}
+                  disabled={deletingAllClosed}
+                  className="gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {deletingAllClosed ? "Menghapus..." : "Hapus Semua"}
+                </Button>
+              </div>
+            )}
+            <div className="grid gap-4">
             {filteredTickets.map((ticket) => {
               const unreadMessages = ticket.messages?.filter(
                 (msg) => !msg.is_read && msg.user_id !== auth.user.id
@@ -294,6 +414,21 @@ function LaporanBugContent() {
                             </span>
                           )}
                         </div>
+                        {ticket.status === "closed" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleDeleteClosedTicket(ticket.id)
+                            }}
+                            disabled={deletingTicketId === ticket.id}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            {deletingTicketId === ticket.id ? "..." : "Hapus"}
+                          </Button>
+                        )}
                       </div>
                       <div className="min-w-0">
                         <h3 className="font-bold text-sm md:text-base truncate" title={ticket.title}>
@@ -353,7 +488,8 @@ function LaporanBugContent() {
                 </Card>
               )
             })}
-          </div>
+            </div>
+          </>
         )}
       </div>
 

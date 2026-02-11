@@ -319,9 +319,9 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((user) => (
+                  {filteredUsers.map((user, index) => (
                     <tr key={user.id} className="border-b hover:bg-muted/50">
-                      <td className="py-3 px-2 font-medium">{user.id}</td>
+                      <td className="py-3 px-2 font-medium">{index + 1}</td>
                       <td className="py-3 px-2 font-medium">{user.username}</td>
                       <td className="py-3 px-2 text-muted-foreground">{user.email}</td>
                       <td className="py-3 px-2">

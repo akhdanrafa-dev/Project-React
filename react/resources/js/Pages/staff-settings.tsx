@@ -7,7 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { StaffPageHeader } from '@/layouts/app/component/StaffPageHeader';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard } from '@/routes';
 import type { BreadcrumbItem } from '@/types';
@@ -33,6 +35,13 @@ export default function StaffSettings() {
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Settings" />
+
+      <StaffPageHeader
+        items={[
+          { label: "Beranda", href: "/staff-dashboard" },
+          { label: "Pengaturan", href: "/settings" },
+        ]}
+      />
       
       <div className="flex flex-1 flex-col gap-6 p-4 overflow-x-auto">
         <div>

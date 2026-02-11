@@ -1,6 +1,13 @@
 import { Head } from '@inertiajs/react'
 import { Check, X, AlertCircle, Clock, CheckCircle2, XCircle } from "lucide-react"
 import { useState, useEffect } from "react"
+
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -10,8 +17,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Separator } from "@/components/ui/separator"
+import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
+import type { BreadcrumbItem as BreadcrumbItemData } from '@/types';
 
 interface Alert {
   id: number;
@@ -39,7 +48,7 @@ interface Alert {
   };
 }
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs: BreadcrumbItemData[] = [
     {
         title: 'Notifikasi Produk',
         href: '/staff-alerts',
@@ -141,6 +150,21 @@ export default function StaffAlerts() {
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Notifikasi Produk" />
+
+      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/staff-dashboard">Beranda</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/staff-alerts">Notifikasi Produk</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
 
       <div className="flex flex-1 flex-col gap-6 p-4">
         <div>

@@ -15,6 +15,10 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import RootLayout from "@/layouts/app/RootLayouts"
+import {
+  initialStaffConversations,
+  type StaffChatMessage,
+} from "@/lib/staff-conversations"
 
 type StaffStatus = "active" | "inactive"
 
@@ -26,60 +30,14 @@ interface StaffMember {
   lastSeen: string
 }
 
-interface ChatMessage {
-  id: number
-  sender: "developer" | "staff"
-  message: string
-  time: string
-}
-
 // akan diisi dari API
 const staffMembers: StaffMember[] = []
 
-const initialConversations: Record<number, ChatMessage[]> = {
-  201: [
-    {
-      id: 1,
-      sender: "staff",
-      message: "Halo dev, ada update terkait bug di halaman checkout.",
-      time: "09:12",
-    },
-    {
-      id: 2,
-      sender: "developer",
-      message: "Siap, saya cek log-nya dulu ya.",
-      time: "09:14",
-    },
-  ],
-  202: [
-    {
-      id: 3,
-      sender: "staff",
-      message: "Produk baru sudah saya input, tapi belum tampil di katalog.",
-      time: "08:45",
-    },
-  ],
-  203: [
-    {
-      id: 4,
-      sender: "staff",
-      message: "Testing terakhir: issue pembayaran masih muncul di iOS.",
-      time: "07:30",
-    },
-    {
-      id: 5,
-      sender: "developer",
-      message: "Oke, nanti saya patch setelah standup.",
-      time: "07:45",
-    },
-  ],
-  204: [],
-}
 
 export default function DeveloperStaffManagement() {
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null)
-  const [conversations, setConversations] = useState<Record<number, ChatMessage[]>>(
-    () => initialConversations,
+  const [conversations, setConversations] = useState<Record<number, StaffChatMessage[]>>(
+    () => initialStaffConversations,
   )
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(false)
@@ -95,14 +53,33 @@ export default function DeveloperStaffManagement() {
         const res = await fetch('/api/staff-users')
         if (!res.ok) throw new Error('Gagal memuat staff')
         const data = await res.json()
+        const rawUsers = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.users)
+            ? data.users
+            : Array.isArray(data?.data)
+              ? data.data
+              : []
         // map API -> StaffMember
-        const mapped: StaffMember[] = data.map((u: any) => ({
-          id: u.id,
-          name: u.name ?? u.username ?? `User ${u.id}`,
-          role: u.role ?? 'staff',
-          status: u.is_active ? 'active' : 'inactive',
-          lastSeen: u.last_seen ?? '-',
-        }))
+        const mapped: StaffMember[] = rawUsers
+          .filter((u: any) => String(u?.role ?? 'staff').toLowerCase() === 'staff')
+          .map((u: any) => {
+            const statusValue = typeof u?.status === 'string' ? u.status.toLowerCase() : ''
+            const status: StaffStatus =
+              statusValue === 'active' || statusValue === 'inactive'
+                ? (statusValue as StaffStatus)
+                : u?.is_active === false
+                  ? 'inactive'
+                  : 'active'
+
+            return {
+              id: u.id,
+              name: u.name ?? u.username ?? `User ${u.id}`,
+              role: u.role ?? 'staff',
+              status,
+              lastSeen: u.lastSeen ?? u.last_seen ?? '-',
+            }
+          })
         if (isMounted) setStaff(mapped)
       } catch (e) {
         console.error(e)
