@@ -75,8 +75,8 @@ const data = {
       title: "Produk",
       icon: BookOpen,
       items: [
-        { title: "Katalog", url: "katalog" },
-        { title: "Keranjang", url: "keranjang" },
+        { title: "Katalog", url: "/katalog" },
+        { title: "Keranjang", url: "/keranjang" },
         { title: "Riwayat Pembelian", url: "/history-pembelian" },
       ],
     },
