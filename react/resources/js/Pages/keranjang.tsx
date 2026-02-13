@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import { useToast } from "@/components/ui/use-toast"
 import { useCart } from "@/layouts/app/context/CartContext"
+import { useCatalog } from "@/layouts/app/context/CatalogContext"
 import RootLayout from "@/layouts/app/RootLayouts"
 
 export default function KeranjangPage() {
@@ -21,12 +22,37 @@ export default function KeranjangPage() {
 function KeranjangContent() {
   const { toast } = useToast()
   const { items, removeFromCart, updateQuantity, clearCart } = useCart()
+  const { products, getProduct, adjustStock, setStock } = useCatalog()
   const [isCheckingOut, setIsCheckingOut] = useState(false)
+
+  const resolveCatalogProduct = (item: typeof items[number]) => {
+    const byId = getProduct(item.id)
+    if (byId) return byId
+
+    if (item.sku) {
+      const bySku = products.find((product) => product.sku === item.sku)
+      if (bySku) return bySku
+    }
+
+    return products.find((product) => product.name === item.name)
+  }
 
   const handleQuantityChange = (id: number, change: number) => {
     const item = items.find(i => i.id === id)
     if (item) {
       const newQuantity = item.quantity + change
+      const product = resolveCatalogProduct(item)
+
+      if (change > 0 && product && newQuantity > product.stock) {
+        toast({
+          title: "Stok tidak cukup",
+          description: `Stok tersedia hanya ${product.stock} unit`,
+          variant: "destructive",
+          duration: 1500,
+        })
+        return
+      }
+
       updateQuantity(id, newQuantity)
     }
   }
@@ -37,6 +63,36 @@ function KeranjangContent() {
         title: "Keranjang Kosong",
         description: "Tambahkan produk terlebih dahulu sebelum checkout",
         duration: 1500,
+      })
+      return
+    }
+
+    const stockIssues = items
+      .map((item) => {
+        const product = resolveCatalogProduct(item)
+
+        if (!product) {
+          return `${item.name} tidak ditemukan di katalog.`
+        }
+
+        if (product.stock <= 0) {
+          return `Stok ${product.name} sudah habis.`
+        }
+
+        if (item.quantity > product.stock) {
+          return `Stok ${product.name} tersisa ${product.stock} unit.`
+        }
+
+        return null
+      })
+      .filter((value): value is string => Boolean(value))
+
+    if (stockIssues.length > 0) {
+      toast({
+        title: "Checkout gagal",
+        description: stockIssues.join(" "),
+        variant: "destructive",
+        duration: 2500,
       })
       return
     }
@@ -53,16 +109,19 @@ function KeranjangContent() {
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: {
+          Accept: "application/json",
           "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
           "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
         },
         body: JSON.stringify({
           items: items.map(item => ({
-            product_id: item.id,
-            product_name: item.name,
+            product_id: resolveCatalogProduct(item)?.id ?? item.id,
+            product_name: resolveCatalogProduct(item)?.name ?? item.name,
+            sku: resolveCatalogProduct(item)?.sku ?? item.sku ?? null,
             quantity: item.quantity,
             price: item.price,
-            image: item.image || null,
+            image: resolveCatalogProduct(item)?.image || item.image || null,
           })),
           subtotal: subtotalAmount,
           shipping_cost: shippingCostAmount,
@@ -70,12 +129,38 @@ function KeranjangContent() {
         }),
       })
 
-      const data = await response.json()
+      const contentType = response.headers.get("content-type") || ""
+      const isJsonResponse = contentType.includes("application/json")
+      const data: Record<string, unknown> | null = isJsonResponse
+        ? await response.json()
+        : null
 
-      if (response.ok) {
+      if (response.ok && isJsonResponse) {
+        const updatedStocks: Array<{
+          product_id?: number
+          stock?: number
+        }> = Array.isArray(data?.updated_stocks)
+          ? (data.updated_stocks as Array<{ product_id?: number; stock?: number }>)
+          : []
+
+        if (updatedStocks.length > 0) {
+          updatedStocks.forEach((entry) => {
+            const productId = Number(entry?.product_id)
+            const stock = Number(entry?.stock)
+
+            if (Number.isFinite(productId) && Number.isFinite(stock)) {
+              setStock(productId, stock)
+            }
+          })
+        } else {
+          items.forEach((item) => {
+            adjustStock(item.id, -item.quantity)
+          })
+        }
+
         clearCart()
         toast({
-          title: "Berhasil ✅",
+          title: "Berhasil",
           description: "Pesanan Anda telah berhasil disimpan",
           duration: 1500,
         })
@@ -83,9 +168,25 @@ function KeranjangContent() {
           window.location.href = "/history-pembelian"
         }, 1500)
       } else {
-        const errorMsg = data.errors 
-          ? Object.values(data.errors).flat().join(", ")
-          : data.message || "Terjadi kesalahan saat checkout"
+        const maybeErrors = data?.errors
+        const validationErrors = (
+          maybeErrors &&
+          typeof maybeErrors === "object"
+            ? Object.values(
+                maybeErrors as Record<string, unknown>
+              ).flat()
+            : []
+        )
+          .filter((value): value is string => typeof value === "string")
+
+        const errorMsg = !isJsonResponse
+          ? "Respons checkout tidak valid. Silakan login ulang lalu coba lagi."
+          : validationErrors.length > 0
+          ? validationErrors.join(", ")
+          : (typeof data?.message === "string"
+              ? data.message
+              : `Checkout gagal (HTTP ${response.status})`)
+
         toast({
           title: "Gagal",
           description: errorMsg,
@@ -97,7 +198,9 @@ function KeranjangContent() {
       console.error("Checkout error:", error)
       toast({
         title: "Error",
-        description: "Terjadi kesalahan koneksi saat checkout",
+        description: error instanceof Error
+          ? `Terjadi kesalahan saat checkout: ${error.message}`
+          : "Terjadi kesalahan koneksi saat checkout",
         variant: "destructive",
         duration: 1500,
       })
@@ -243,3 +346,4 @@ function KeranjangContent() {
     </>
   )
 }
+

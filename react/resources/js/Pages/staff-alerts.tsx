@@ -40,6 +40,7 @@ interface Alert {
     sku: string;
     stock: number;
     price: number;
+    image?: string;
     description?: string;
   };
   developer?: {
@@ -126,9 +127,43 @@ export default function StaffAlerts() {
     }
   }
 
+  const formatPrice = (price: number): string =>
+    new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    }).format(price)
+
+  const isValidUrl = (value?: string): boolean => {
+    if (!value) return false
+    try {
+      new URL(value)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const formatNewValue = (alert: Alert): string => {
+    if (!alert.new_value) return '-'
+
+    if (alert.alert_type === 'stock') {
+      return `${alert.new_value} unit`
+    }
+
+    if (alert.alert_type === 'price') {
+      const price = Number(alert.new_value)
+      return Number.isFinite(price) ? formatPrice(price) : alert.new_value
+    }
+
+    return alert.new_value
+  }
+
   const getAlertTypeLabel = (type: string): string => {
     switch (type) {
       case 'stock': return 'Ubah Stok'
+      case 'banner': return 'Ganti Banner'
+      case 'price': return 'Ubah Harga'
       case 'name': return 'Ubah Nama'
       case 'description': return 'Ubah Deskripsi'
       default: return type
@@ -138,6 +173,8 @@ export default function StaffAlerts() {
   const getAlertTypeColor = (type: string): string => {
     switch (type) {
       case 'stock': return 'bg-blue-100 text-blue-800'
+      case 'banner': return 'bg-orange-100 text-orange-800'
+      case 'price': return 'bg-emerald-100 text-emerald-800'
       case 'name': return 'bg-purple-100 text-purple-800'
       case 'description': return 'bg-cyan-100 text-cyan-800'
       default: return 'bg-gray-100 text-gray-800'
@@ -232,11 +269,34 @@ export default function StaffAlerts() {
                       <strong>Dari Developer:</strong> {alert.developer?.name}
                     </p>
                     
-                    <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                       <div className="bg-white p-3 rounded border border-gray-200">
                         <p className="text-xs font-semibold text-gray-600 mb-1">NILAI SAAT INI</p>
                         {alert.alert_type === 'stock' && (
                           <p className="font-mono text-base">{alert.product?.stock} unit</p>
+                        )}
+                        {alert.alert_type === 'banner' && (
+                          <div className="space-y-2">
+                            {alert.product?.image ? (
+                              <>
+                                <p className="font-mono text-xs break-all">{alert.product.image}</p>
+                                <img
+                                  src={alert.product.image}
+                                  alt={alert.product?.name ?? 'Banner produk'}
+                                  className="h-20 w-20 rounded object-cover border border-gray-200"
+                                />
+                              </>
+                            ) : (
+                              <p className="font-mono text-xs">(Belum ada banner)</p>
+                            )}
+                          </div>
+                        )}
+                        {alert.alert_type === 'price' && (
+                          <p className="font-mono text-base">
+                            {Number.isFinite(Number(alert.product?.price))
+                              ? formatPrice(Number(alert.product?.price))
+                              : '-'}
+                          </p>
                         )}
                         {alert.alert_type === 'name' && (
                           <p className="font-mono text-base break-words">{alert.product?.name}</p>
@@ -248,7 +308,18 @@ export default function StaffAlerts() {
                       
                       <div className="bg-green-50 p-3 rounded border border-green-200">
                         <p className="text-xs font-semibold text-green-700 mb-1">NILAI BARU</p>
-                        <p className="font-mono text-base break-words text-green-900">{alert.new_value || '-'}</p>
+                        {alert.alert_type === 'banner' && isValidUrl(alert.new_value) ? (
+                          <div className="space-y-2">
+                            <p className="font-mono text-xs break-all text-green-900">{alert.new_value}</p>
+                            <img
+                              src={alert.new_value}
+                              alt={`Banner baru ${alert.product?.name ?? ''}`.trim()}
+                              className="h-20 w-20 rounded object-cover border border-green-200"
+                            />
+                          </div>
+                        ) : (
+                          <p className="font-mono text-base break-words text-green-900">{formatNewValue(alert)}</p>
+                        )}
                       </div>
                     </div>
 

@@ -27,16 +27,43 @@ export default function KatalogPage() {
 
 function KatalogContent() {
   const { products } = useCatalog()
-  const { addToCart } = useCart()
+  const { items, addToCart } = useCart()
   const { toast } = useToast()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
+  const getCartQuantity = (productId: number) => {
+    const existing = items.find((item) => item.id === productId)
+    return existing?.quantity ?? 0
+  }
+
   const handleAddToCart = (product: CatalogProduct) => {
+    if (product.stock <= 0) {
+      toast({
+        title: "Stok habis",
+        description: `${product.name} sedang tidak tersedia`,
+        variant: "destructive",
+        duration: 1500,
+      })
+      return
+    }
+
+    const currentQuantity = getCartQuantity(product.id)
+    if (currentQuantity >= product.stock) {
+      toast({
+        title: "Stok tidak cukup",
+        description: `Maksimal ${product.stock} unit untuk ${product.name}`,
+        variant: "destructive",
+        duration: 1500,
+      })
+      return
+    }
+
     addToCart({
       id: product.id,
       name: product.name,
       price: product.price,
       image: product.image,
+      sku: product.sku,
     })
 
     toast({
@@ -104,38 +131,49 @@ function KatalogContent() {
         </div>
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredProducts.map((product) => (
-            <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="relative w-full aspect-square bg-gray-200 overflow-hidden">
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="h-full w-full object-cover"
-                />
-              </div>
+          {filteredProducts.map((product) => {
+            const cartQuantity = getCartQuantity(product.id)
+            const isOutOfStock = product.stock <= 0
+            const isMaxInCart = !isOutOfStock && cartQuantity >= product.stock
 
-              <CardHeader>
-                <CardTitle className="line-clamp-2">{product.name}</CardTitle>
-              </CardHeader>
+            return (
+              <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                <div className="relative w-full aspect-square bg-gray-200 overflow-hidden">
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
 
-              <CardContent className="space-y-3">
-                <p className="text-lg font-semibold text-green-600">
-                  Rp {product.price.toLocaleString("id-ID")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Stok: {product.stock} unit
-                </p>
+                <CardHeader>
+                  <CardTitle className="line-clamp-2">{product.name}</CardTitle>
+                </CardHeader>
 
-                <Button
-                  className="w-full"
-                  onClick={() => handleAddToCart(product)}
-                >
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  Tambah ke Keranjang
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                <CardContent className="space-y-3">
+                  <p className="text-lg font-semibold text-green-600">
+                    Rp {product.price.toLocaleString("id-ID")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Stok: {product.stock} unit
+                  </p>
+
+                  <Button
+                    className="w-full"
+                    onClick={() => handleAddToCart(product)}
+                    disabled={isOutOfStock || isMaxInCart}
+                  >
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    {isOutOfStock
+                      ? "Stok Habis"
+                      : isMaxInCart
+                        ? "Batas Stok di Keranjang"
+                        : "Tambah ke Keranjang"}
+                  </Button>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
 
         {filteredProducts.length === 0 && (

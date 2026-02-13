@@ -1,6 +1,12 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState } from "react"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react"
 
 import {
   catalogCategories,
@@ -18,6 +24,7 @@ type CatalogContextType = {
   updateProduct: (id: number, updates: Partial<CatalogProduct>) => void
   removeProduct: (id: number) => void
   adjustStock: (id: number, delta: number) => void
+  setStock: (id: number, stock: number) => void
   getProduct: (id: number) => CatalogProduct | undefined
 }
 
@@ -25,7 +32,39 @@ const STORAGE_KEY = "catalog_products"
 const CatalogContext = createContext<CatalogContextType | null>(null)
 
 const defaultCategoryId =
-  catalogCategories[0]?.id ?? "accessories"
+  catalogCategories.some(
+    (category) => category.id === "accessories"
+  )
+    ? "accessories"
+    : (catalogCategories[0]?.id ?? "accessories")
+
+const categoryAliasMap: Record<string, string> = {
+  accessories: "accessories",
+  chair: "chair",
+  deskmat: "mousepad",
+  "docking-station": "gamepad",
+  "game-pad": "gamepad",
+  gamepad: "gamepad",
+  keyboard: "keyboard",
+  kursi: "chair",
+  meja: "accessories",
+  monitor: "monitor",
+  mouse: "mouse",
+  mousepad: "mousepad",
+  "holder-stand": "accessories",
+}
+
+type ApiCatalogProduct = {
+  id?: number
+  name?: string
+  price?: number
+  image?: string | null
+  category?: string | null
+  category_name?: string | null
+  category_slug?: string | null
+  stock?: number
+  sku?: string
+}
 
 const createSku = (id: number) => `PRD-${String(id).padStart(4, "0")}`
 
@@ -106,6 +145,83 @@ function normalizeProducts(raw: unknown): CatalogProduct[] {
   })
 }
 
+function normalizeCategoryId(rawCategory: unknown): string {
+  if (typeof rawCategory !== "string" || !rawCategory.trim()) {
+    return defaultCategoryId
+  }
+
+  const normalized = rawCategory
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+
+  if (categoryAliasMap[normalized]) {
+    return categoryAliasMap[normalized]
+  }
+
+  if (
+    catalogCategories.some((category) => category.id === normalized)
+  ) {
+    return normalized
+  }
+
+  return defaultCategoryId
+}
+
+function normalizeApiProducts(raw: unknown): CatalogProduct[] {
+  const productList = (() => {
+    if (Array.isArray(raw)) return raw
+    if (
+      raw &&
+      typeof raw === "object" &&
+      Array.isArray((raw as { products?: unknown }).products)
+    ) {
+      return (raw as { products: unknown[] }).products
+    }
+    return []
+  })()
+
+  return productList
+    .map((item) => {
+      const rawProduct = item as ApiCatalogProduct
+      const parsedId = Number(rawProduct.id)
+      if (!Number.isFinite(parsedId)) {
+        return null
+      }
+
+      const fallback =
+        initialCatalogProducts.find(
+          (product) => product.id === parsedId
+        ) ?? buildFallback(parsedId)
+
+      return normalizeProduct(
+        {
+          id: parsedId,
+          name: rawProduct.name,
+          sku: rawProduct.sku,
+          price: Number(rawProduct.price),
+          stock: Number(rawProduct.stock),
+          image:
+            typeof rawProduct.image === "string"
+              ? rawProduct.image
+              : fallback.image,
+          category: normalizeCategoryId(
+            rawProduct.category_slug ??
+              rawProduct.category ??
+              rawProduct.category_name
+          ),
+        },
+        fallback
+      )
+    })
+    .filter(
+      (product): product is CatalogProduct =>
+        product !== null
+    )
+}
+
 export function CatalogProvider({
   children,
 }: {
@@ -115,6 +231,45 @@ export function CatalogProvider({
     () => initialCatalogProducts
   )
   const [isHydrated, setIsHydrated] = useState(false)
+
+  const refreshProducts = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const response = await fetch(
+          "/api/catalog-products",
+          {
+            credentials: "same-origin",
+            headers: {
+              Accept: "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            signal,
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch catalog products (status: ${response.status})`
+          )
+        }
+
+        const payload = await response.json()
+        const nextProducts =
+          normalizeApiProducts(payload)
+
+        if (nextProducts.length > 0) {
+          setProducts(nextProducts)
+        }
+      } catch (error) {
+        if (signal?.aborted) return
+        console.error(
+          "Failed to sync catalog products from API:",
+          error
+        )
+      }
+    },
+    []
+  )
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -141,6 +296,30 @@ export function CatalogProvider({
       )
     }
   }, [products, isHydrated])
+
+  useEffect(() => {
+    if (!isHydrated) return
+
+    const controller = new AbortController()
+    void refreshProducts(controller.signal)
+
+    return () => {
+      controller.abort()
+    }
+  }, [isHydrated, refreshProducts])
+
+  useEffect(() => {
+    if (!isHydrated) return
+
+    const handleFocus = () => {
+      void refreshProducts()
+    }
+
+    window.addEventListener("focus", handleFocus)
+    return () => {
+      window.removeEventListener("focus", handleFocus)
+    }
+  }, [isHydrated, refreshProducts])
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
@@ -255,6 +434,26 @@ export function CatalogProvider({
     )
   }
 
+  function setStock(id: number, stock: number) {
+    if (!Number.isFinite(stock)) return
+
+    const nextStock = Math.max(
+      0,
+      Math.floor(Number(stock))
+    )
+
+    setProducts((prev) =>
+      prev.map((product) =>
+        product.id === id
+          ? {
+              ...product,
+              stock: nextStock,
+            }
+          : product
+      )
+    )
+  }
+
   function getProduct(id: number) {
     return products.find((product) => product.id === id)
   }
@@ -268,6 +467,7 @@ export function CatalogProvider({
         updateProduct,
         removeProduct,
         adjustStock,
+        setStock,
         getProduct,
       }}
     >

@@ -3,6 +3,9 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 use App\Http\Controllers\UserController;
@@ -12,6 +15,7 @@ use App\Http\Controllers\AdminITController;
 use App\Http\Controllers\StaffProdukController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\AlertController;
+use App\Models\Product;
 
 /*
 |--------------------------------------------------------------------------
@@ -360,46 +364,217 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
+    | Catalog Products API
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/api/catalog-products', function () {
+        if (Product::count() === 0) {
+            Artisan::call('db:seed', [
+                '--class' => \Database\Seeders\CategorySeeder::class,
+                '--force' => true,
+            ]);
+
+            Artisan::call('db:seed', [
+                '--class' => \Database\Seeders\ProductSeeder::class,
+                '--force' => true,
+            ]);
+        }
+
+        $products = Product::with('category')
+            ->orderBy('id')
+            ->get()
+            ->map(function (Product $product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'price' => (float) $product->price,
+                    'stock' => (int) $product->stock,
+                    'image' => $product->image,
+                    'category_slug' => $product->category?->slug,
+                    'category_name' => $product->category?->name,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'products' => $products,
+        ]);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
     | Checkout API
     |--------------------------------------------------------------------------
     */
     Route::post('/api/checkout', function (Request $request) {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|numeric',
-            'items.*.product_name' => 'required|string',
-            'items.*.quantity' => 'required|numeric|min:1',
-            'items.*.price' => 'required|numeric|min:0',
-            'items.*.image' => 'nullable|string',
-            'subtotal' => 'required|numeric|min:0',
-            'shipping_cost' => 'required|numeric|min:0',
-            'total' => 'required|numeric|min:0',
-        ]);
+        try {
+            if (Product::count() === 0) {
+                Artisan::call('db:seed', [
+                    '--class' => \Database\Seeders\CategorySeeder::class,
+                    '--force' => true,
+                ]);
 
-        $user = auth()->user();
+                Artisan::call('db:seed', [
+                    '--class' => \Database\Seeders\ProductSeeder::class,
+                    '--force' => true,
+                ]);
+            }
 
-        $order = \App\Models\Order::create([
-            'user_id' => $user->id,
-            'subtotal' => $validated['subtotal'],
-            'shipping_cost' => $validated['shipping_cost'],
-            'total' => $validated['total'],
-            'status' => 'completed',
-        ]);
-
-        foreach ($validated['items'] as $item) {
-            $order->items()->create([
-                'product_id' => $item['product_id'],
-                'product_name' => $item['product_name'],
-                'quantity' => $item['quantity'],
-                'price' => $item['price'],
-                'image' => $item['image'] ?? null,
+            $validated = $request->validate([
+                'items' => 'required|array|min:1',
+                'items.*.product_id' => 'required|integer|min:1',
+                'items.*.product_name' => 'required|string',
+                'items.*.sku' => 'nullable|string|max:255',
+                'items.*.quantity' => 'required|integer|min:1',
+                'items.*.price' => 'required|numeric|min:0',
+                'items.*.image' => 'nullable|string',
+                'subtotal' => 'required|numeric|min:0',
+                'shipping_cost' => 'required|numeric|min:0',
+                'total' => 'required|numeric|min:0',
             ]);
-        }
 
-        return response()->json([
-            'message' => 'Order created successfully',
-            'order_id' => $order->id,
-        ]);
+            $user = auth()->user();
+
+            [$order, $updatedStocks] = DB::transaction(function () use ($validated, $user) {
+                $requestedItems = collect($validated['items'])->map(function ($item) {
+                    return [
+                        'product_id' => (int) $item['product_id'],
+                        'product_name' => trim((string) $item['product_name']),
+                        'sku' => isset($item['sku']) ? trim((string) $item['sku']) : null,
+                        'quantity' => (int) $item['quantity'],
+                        'price' => $item['price'],
+                        'image' => $item['image'] ?? null,
+                    ];
+                });
+
+                $requestedProductIds = $requestedItems
+                    ->pluck('product_id')
+                    ->filter(fn ($id) => $id > 0)
+                    ->unique()
+                    ->values();
+
+                $productsByRequestedId = Product::whereIn('id', $requestedProductIds)
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+
+                $resolvedItems = $requestedItems->map(function ($item) use ($productsByRequestedId) {
+                    $product = $productsByRequestedId->get($item['product_id']);
+
+                    if (!$product && !empty($item['sku'])) {
+                        $product = Product::where('sku', $item['sku'])
+                            ->lockForUpdate()
+                            ->first();
+                    }
+
+                    if (!$product && $item['product_name'] !== '') {
+                        $product = Product::where('name', $item['product_name'])
+                            ->lockForUpdate()
+                            ->first();
+                    }
+
+                    if (!$product) {
+                        throw ValidationException::withMessages([
+                            'items' => [
+                                "Produk {$item['product_name']} tidak ditemukan. Hapus item dari keranjang lalu tambah lagi dari katalog.",
+                            ],
+                        ]);
+                    }
+
+                    return [
+                        ...$item,
+                        'resolved_product_id' => (int) $product->id,
+                        'resolved_product_name' => (string) $product->name,
+                    ];
+                });
+
+                $resolvedProductIds = $resolvedItems
+                    ->pluck('resolved_product_id')
+                    ->unique()
+                    ->values();
+
+                $products = Product::whereIn('id', $resolvedProductIds)
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+
+                $requestedQuantities = $resolvedItems
+                    ->groupBy(fn ($item) => (int) $item['resolved_product_id'])
+                    ->map(fn ($items) => (int) $items->sum(fn ($item) => (int) $item['quantity']));
+
+                foreach ($requestedQuantities as $productId => $requestedQty) {
+                    $product = $products->get((int) $productId);
+
+                    if (!$product) {
+                        throw ValidationException::withMessages([
+                            'items' => ["Produk dengan ID {$productId} tidak ditemukan."],
+                        ]);
+                    }
+
+                    if ($requestedQty > $product->stock) {
+                        throw ValidationException::withMessages([
+                            'items' => ["Stok {$product->name} tidak mencukupi. Sisa {$product->stock} unit."],
+                        ]);
+                    }
+                }
+
+                $order = \App\Models\Order::create([
+                    'user_id' => $user->id,
+                    'subtotal' => $validated['subtotal'],
+                    'shipping_cost' => $validated['shipping_cost'],
+                    'total' => $validated['total'],
+                    'status' => 'completed',
+                ]);
+
+                foreach ($resolvedItems as $item) {
+                    $product = $products->get((int) $item['resolved_product_id']);
+
+                    $order->items()->create([
+                        'product_id' => (int) ($product?->id ?? $item['resolved_product_id']),
+                        'product_name' => $product?->name ?? $item['resolved_product_name'],
+                        'quantity' => (int) $item['quantity'],
+                        'price' => $item['price'],
+                        'image' => $item['image'] ?? null,
+                    ]);
+                }
+
+                $updatedStocks = [];
+                foreach ($requestedQuantities as $productId => $requestedQty) {
+                    $product = $products->get((int) $productId);
+                    if (!$product) {
+                        continue;
+                    }
+
+                    $product->stock = max(0, $product->stock - $requestedQty);
+                    $product->save();
+
+                    $updatedStocks[] = [
+                        'product_id' => $product->id,
+                        'stock' => $product->stock,
+                    ];
+                }
+
+                return [$order, $updatedStocks];
+            });
+
+            return response()->json([
+                'message' => 'Order created successfully',
+                'order_id' => $order->id,
+                'updated_stocks' => $updatedStocks,
+            ]);
+        } catch (ValidationException $exception) {
+            return response()->json([
+                'message' => 'Checkout gagal',
+                'errors' => $exception->errors(),
+            ], 422);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Terjadi kesalahan server saat checkout.',
+            ], 500);
+        }
     });
 
     /*

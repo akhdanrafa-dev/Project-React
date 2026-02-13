@@ -1,5 +1,5 @@
 import { Head } from "@inertiajs/react"
-import { Search } from "lucide-react"
+import { AlertCircle, Search } from "lucide-react"
 import { useState } from "react"
 
 import {
@@ -8,12 +8,55 @@ import {
   BreadcrumbLink,
   BreadcrumbList,
 } from "@/components/ui/breadcrumb"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import { CatalogProvider, useCatalog } from "@/layouts/app/context/CatalogContext"
 import DeveloperLayout from "@/layouts/app/DeveloperLayout"
+import type { CatalogProduct } from "@/lib/catalog"
+
+type AlertAction = "stock" | "banner" | "price"
+
+const alertActionOptions: Array<{
+  value: AlertAction
+  label: string
+  inputLabel: string
+  placeholder: string
+  inputType: "number" | "url"
+}> = [
+  {
+    value: "stock",
+    label: "Tambah Stock",
+    inputLabel: "Jumlah stock ditambahkan",
+    placeholder: "Contoh: 25",
+    inputType: "number",
+  },
+  {
+    value: "banner",
+    label: "Ganti Banner",
+    inputLabel: "Link banner baru",
+    placeholder: "https://contoh.com/banner.jpg",
+    inputType: "url",
+  },
+  {
+    value: "price",
+    label: "Ubah Harga",
+    inputLabel: "Harga baru (Rupiah)",
+    placeholder: "Contoh: 350000",
+    inputType: "number",
+  },
+]
 
 export default function DeveloperPantauProdukPage() {
   return (
@@ -31,6 +74,11 @@ function DeveloperPantauProdukContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null)
   const [selectedStockFilter, setSelectedStockFilter] = useState<string | null>(null)
+  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null)
+  const [selectedAlertAction, setSelectedAlertAction] = useState<AlertAction | null>(null)
+  const [alertValue, setAlertValue] = useState("")
+  const [alertError, setAlertError] = useState<string | null>(null)
+  const [isSubmittingAlert, setIsSubmittingAlert] = useState(false)
 
   const getStockGroup = (stock: number) => {
     if (stock === 0) return "Habis"
@@ -80,6 +128,125 @@ function DeveloperPantauProdukContent() {
     return "bg-gray-100 text-gray-800"
   }
 
+  const selectedActionConfig = selectedAlertAction
+    ? alertActionOptions.find((action) => action.value === selectedAlertAction) ?? null
+    : null
+
+  const closeAlertDialog = () => {
+    setSelectedProduct(null)
+    setSelectedAlertAction(null)
+    setAlertValue("")
+    setAlertError(null)
+    setIsSubmittingAlert(false)
+  }
+
+  const openAlertDialog = (product: CatalogProduct) => {
+    setSelectedProduct(product)
+    setSelectedAlertAction(null)
+    setAlertValue("")
+    setAlertError(null)
+  }
+
+  const handleSelectAction = (action: AlertAction) => {
+    setSelectedAlertAction(action)
+    setAlertValue("")
+    setAlertError(null)
+  }
+
+  const handleSubmitAlert = async () => {
+    if (!selectedProduct) {
+      return
+    }
+
+    if (!selectedAlertAction) {
+      setAlertError("Pilih salah satu aksi terlebih dahulu.")
+      return
+    }
+
+    const trimmedValue = alertValue.trim()
+    if (!trimmedValue) {
+      setAlertError("Nilai baru wajib diisi.")
+      return
+    }
+
+    let normalizedValue = trimmedValue
+    let description = ""
+
+    if (selectedAlertAction === "stock") {
+      const parsedStock = Number(trimmedValue)
+      if (!Number.isFinite(parsedStock) || !Number.isInteger(parsedStock) || parsedStock <= 0) {
+        setAlertError("Jumlah stock harus angka bulat lebih dari 0.")
+        return
+      }
+
+      normalizedValue = String(parsedStock)
+      description = `Permintaan tambah stock ${parsedStock} unit untuk produk ${selectedProduct.name}.`
+    }
+
+    if (selectedAlertAction === "banner") {
+      try {
+        new URL(trimmedValue)
+      } catch {
+        setAlertError("Link banner harus berupa URL yang valid.")
+        return
+      }
+
+      description = `Permintaan ganti banner untuk produk ${selectedProduct.name}.`
+    }
+
+    if (selectedAlertAction === "price") {
+      const parsedPrice = Number(trimmedValue)
+      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+        setAlertError("Harga harus berupa angka lebih dari 0.")
+        return
+      }
+
+      const normalizedPrice = Math.floor(parsedPrice)
+      normalizedValue = String(normalizedPrice)
+      description = `Permintaan ubah harga produk ${selectedProduct.name} menjadi ${formatPrice(normalizedPrice)}.`
+    }
+
+    setIsSubmittingAlert(true)
+    setAlertError(null)
+
+    try {
+      const response = await fetch("/alerts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN":
+            document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? "",
+        },
+        body: JSON.stringify({
+          product_id: selectedProduct.id,
+          alert_type: selectedAlertAction,
+          new_value: normalizedValue,
+          description,
+        }),
+      })
+
+      const data: {
+        message?: string
+        errors?: Record<string, string[]>
+      } = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        const validationMessage = data.errors
+          ? Object.values(data.errors).flat().find((message) => typeof message === "string")
+          : null
+
+        throw new Error(validationMessage ?? data.message ?? "Gagal mengirim notifikasi ke staff.")
+      }
+
+      window.alert("Permintaan berhasil dikirim ke halaman staff alerts.")
+      closeAlertDialog()
+    } catch (error) {
+      setAlertError(error instanceof Error ? error.message : "Gagal mengirim notifikasi ke staff.")
+    } finally {
+      setIsSubmittingAlert(false)
+    }
+  }
+
   return (
     <>
       <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
@@ -101,7 +268,7 @@ function DeveloperPantauProdukContent() {
         <div>
           <h1 className="text-3xl font-bold">Pantau Produk</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Lihat stok, kategori, dan harga produk tanpa mengubah data
+            Lihat data produk dan kirim permintaan perubahan ke staff
           </p>
         </div>
 
@@ -178,7 +345,21 @@ function DeveloperPantauProdukContent() {
                   </CardHeader>
 
                   <CardContent className="space-y-3">
-                    <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        SKU: {product.sku}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => openAlertDialog(product)}
+                        title="Kirim permintaan ke staff"
+                      >
+                        <AlertCircle className="h-4 w-4 text-amber-600" />
+                      </Button>
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       Kategori: {getCategoryName(product.category)}
                     </p>
@@ -210,6 +391,80 @@ function DeveloperPantauProdukContent() {
           )}
         </div>
       </div>
+
+      <Dialog
+        open={selectedProduct !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeAlertDialog()
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Kirim Notifikasi ke Staff</DialogTitle>
+            <DialogDescription>
+              Pilih aksi untuk produk <span className="font-medium text-foreground">{selectedProduct?.name}</span>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {alertActionOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  type="button"
+                  variant={selectedAlertAction === option.value ? "default" : "outline"}
+                  onClick={() => handleSelectAction(option.value)}
+                  disabled={isSubmittingAlert}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+
+            {selectedActionConfig && (
+              <div className="space-y-2">
+                <Label htmlFor="alert-value-input">{selectedActionConfig.inputLabel}</Label>
+                <Input
+                  id="alert-value-input"
+                  type={selectedActionConfig.inputType}
+                  min={selectedAlertAction === "banner" ? undefined : "1"}
+                  step={selectedAlertAction === "stock" ? "1" : selectedAlertAction === "price" ? "1000" : undefined}
+                  placeholder={selectedActionConfig.placeholder}
+                  value={alertValue}
+                  onChange={(event) => setAlertValue(event.target.value)}
+                  disabled={isSubmittingAlert}
+                />
+              </div>
+            )}
+
+            {alertError && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {alertError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeAlertDialog}
+              disabled={isSubmittingAlert}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitAlert}
+              disabled={isSubmittingAlert || !selectedAlertAction}
+            >
+              {isSubmittingAlert ? "Mengirim..." : "Kirim ke Staff Alerts"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

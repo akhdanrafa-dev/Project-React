@@ -12,7 +12,7 @@ class AlertController extends Controller
         $validated = $request->validate([
             'product_id' => 'nullable|integer',
             'product_sku' => 'nullable|string',
-            'alert_type' => 'required|in:stock,name,description',
+            'alert_type' => 'required|in:stock,name,description,banner,price',
             'new_value' => 'nullable|string',
             'description' => 'required|string',
         ]);
@@ -74,6 +74,7 @@ class AlertController extends Controller
                         'sku' => $alert->product->sku,
                         'stock' => $alert->product->stock,
                         'price' => $alert->product->price,
+                        'image' => $alert->product->image,
                         'description' => $alert->product->description,
                     ] : null,
                     'developer' => $alert->developer ? [
@@ -113,6 +114,7 @@ class AlertController extends Controller
                         'sku' => $alert->product->sku,
                         'stock' => $alert->product->stock,
                         'price' => $alert->product->price,
+                        'image' => $alert->product->image,
                         'description' => $alert->product->description,
                     ] : null,
                     'developer' => $alert->developer ? [

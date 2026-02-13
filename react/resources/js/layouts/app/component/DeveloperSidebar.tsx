@@ -38,7 +38,6 @@ const data = {
         { title: "Laporan", url: "/laporan" },
         { title: "Pantau Produk", url: "/developer/pantau-produk" },
         { title: "Manajemen Staff", url: "/developer/debug" },
-        { title: "Performance", url: "/developer/performance" },
         { title: "Ranking Admin", url: "/admin-it/ranking-admin", icon: TrendingUp },
         { title: "Pengaturan", url: "/settings" },
       ],
