@@ -29,8 +29,7 @@ const data = {
   },
   navMainDeveloper: [
     {
-      title: "Developer Tools",
-      icon: Code2,
+      title: "Menu Developer",
       isActive: true,
       items: [
         { title: "Beranda", url: "/developer-dashboard", icon: Home },

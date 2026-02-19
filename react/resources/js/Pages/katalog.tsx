@@ -31,6 +31,22 @@ function KatalogContent() {
   const { toast } = useToast()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
+  const getDiscountPercentage = (discount?: number) => {
+    if (!Number.isFinite(discount)) return 0
+    return Math.min(100, Math.max(0, Number(discount)))
+  }
+
+  const getDiscountedPrice = (product: CatalogProduct) => {
+    const discountPercentage = getDiscountPercentage(product.discount)
+    const discountedPrice = product.price - (product.price * discountPercentage) / 100
+    return Math.max(0, Math.round(discountedPrice))
+  }
+
+  const formatDiscount = (discount?: number) => {
+    const safeDiscount = getDiscountPercentage(discount)
+    return `${safeDiscount.toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`
+  }
+
   const getCartQuantity = (productId: number) => {
     const existing = items.find((item) => item.id === productId)
     return existing?.quantity ?? 0
@@ -61,7 +77,7 @@ function KatalogContent() {
     addToCart({
       id: product.id,
       name: product.name,
-      price: product.price,
+      price: getDiscountedPrice(product),
       image: product.image,
       sku: product.sku,
     })
@@ -135,6 +151,8 @@ function KatalogContent() {
             const cartQuantity = getCartQuantity(product.id)
             const isOutOfStock = product.stock <= 0
             const isMaxInCart = !isOutOfStock && cartQuantity >= product.stock
+            const discountedPrice = getDiscountedPrice(product)
+            const hasDiscount = getDiscountPercentage(product.discount) > 0
 
             return (
               <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -152,8 +170,18 @@ function KatalogContent() {
 
                 <CardContent className="space-y-3">
                   <p className="text-lg font-semibold text-green-600">
-                    Rp {product.price.toLocaleString("id-ID")}
+                    Rp {discountedPrice.toLocaleString("id-ID")}
                   </p>
+                  {hasDiscount && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground line-through">
+                        Rp {product.price.toLocaleString("id-ID")}
+                      </p>
+                      <p className="text-xs font-medium text-orange-600">
+                        Diskon {formatDiscount(product.discount)}
+                      </p>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Stok: {product.stock} unit
                   </p>

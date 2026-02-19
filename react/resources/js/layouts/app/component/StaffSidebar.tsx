@@ -42,7 +42,7 @@ const data = {
   ],
   navMainStaff: [
     {
-      title: "Navigation",
+      title: "Menu Staff",
       isActive: true,
       items: [
         { 

@@ -108,6 +108,23 @@ function DeveloperPantauProdukContent() {
     }).format(price)
   }
 
+  const getDiscountPercentage = (discount?: number) => {
+    if (!Number.isFinite(discount)) return 0
+    return Math.min(100, Math.max(0, Number(discount)))
+  }
+
+  const getDiscountedPrice = (product: CatalogProduct) => {
+    const discountPercentage = getDiscountPercentage(product.discount)
+    const discountedPrice =
+      product.price - (product.price * discountPercentage) / 100
+    return Math.max(0, Math.round(discountedPrice))
+  }
+
+  const formatDiscount = (discount?: number) => {
+    const safeDiscount = getDiscountPercentage(discount)
+    return `${safeDiscount.toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`
+  }
+
   const getCategoryName = (categoryId: string) => {
     return categories.find((category) => category.id === categoryId)?.name ?? categoryId
   }
@@ -325,6 +342,8 @@ function DeveloperPantauProdukContent() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredProducts.map((product) => {
               const statusLabel = getStatusLabel(product.stock)
+              const discountedPrice = getDiscountedPrice(product)
+              const hasDiscount = getDiscountPercentage(product.discount) > 0
               return (
                 <Card key={product.id} className="overflow-hidden">
                   <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
@@ -364,8 +383,18 @@ function DeveloperPantauProdukContent() {
                       Kategori: {getCategoryName(product.category)}
                     </p>
                     <p className="text-lg font-semibold text-green-600">
-                      {formatPrice(product.price)}
+                      {formatPrice(discountedPrice)}
                     </p>
+                    {hasDiscount && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground line-through">
+                          {formatPrice(product.price)}
+                        </p>
+                        <p className="text-xs font-medium text-orange-600">
+                          Diskon {formatDiscount(product.discount)}
+                        </p>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Stok</span>
                       <span className="font-medium">{product.stock} unit</span>

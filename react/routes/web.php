@@ -230,10 +230,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/kelola-produk', [StaffProdukController::class, 'index'])
         ->name('kelola.produk')
         ->middleware('auth');
+
+    Route::post('/kelola-produk', [StaffProdukController::class, 'store'])
+        ->name('kelola.produk.store')
+        ->middleware('auth');
     
     Route::patch('/kelola-produk/{id}', [StaffProdukController::class, 'update'])
         ->name('kelola.produk.update')
-        ->middleware(['auth', 'developer']);
+        ->middleware('auth');
 
     /*
     |--------------------------------------------------------------------------
@@ -389,6 +393,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
                     'name' => $product->name,
                     'sku' => $product->sku,
                     'price' => (float) $product->price,
+                    'discount' => (float) ($product->discount ?? 0),
                     'stock' => (int) $product->stock,
                     'image' => $product->image,
                     'category_slug' => $product->category?->slug,

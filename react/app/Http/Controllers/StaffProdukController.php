@@ -7,6 +7,8 @@ namespace App\Http\Controllers;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class StaffProdukController extends Controller
@@ -45,6 +47,7 @@ class StaffProdukController extends Controller
                 'category' => $product->category?->name ?? 'Unknown',
                 'category_id' => $product->category_id,
                 'price' => $product->price,
+                'discount' => (float) ($product->discount ?? 0),
                 'stock' => $product->stock,
                 'status' => $product->status,
                 'description' => $product->description,
@@ -71,18 +74,75 @@ class StaffProdukController extends Controller
      */
     public function store(Request $request)
     {
+        $user = $request->user();
+
+        if (!$user || !in_array($user->role, ['staff', 'developer'], true)) {
+            abort(403, 'Access denied. Only staff and developer can create products.');
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'sku' => 'required|string|unique:products',
-            'category' => 'required|string',
+            'sku' => 'required|string|max:255|unique:products,sku',
+            'category' => 'required|string|max:100',
             'price' => 'required|numeric|min:0',
+            'discount' => 'sometimes|numeric|min:0|max:100',
             'stock' => 'required|integer|min:0',
+            'description' => 'sometimes|nullable|string',
+            'image' => 'sometimes|nullable|string|max:2048',
         ]);
 
-        // Create product
-        // Product::create($validated);
+        $price = (float) $validated['price'];
+        $discount = array_key_exists('discount', $validated)
+            ? (float) $validated['discount']
+            : 0.0;
 
-        return redirect()->route('staff.produk.index')
+        $categoryId = $this->resolveCategoryId((string) $validated['category']);
+
+        if (!$categoryId) {
+            throw ValidationException::withMessages([
+                'category' => ['Kategori produk tidak valid.'],
+            ]);
+        }
+
+        $description = array_key_exists('description', $validated)
+            ? trim((string) $validated['description'])
+            : null;
+        $image = array_key_exists('image', $validated)
+            ? trim((string) $validated['image'])
+            : null;
+
+        $product = Product::create([
+            'name' => trim((string) $validated['name']),
+            'sku' => trim((string) $validated['sku']),
+            'category_id' => $categoryId,
+            'price' => $price,
+            'discount' => $discount,
+            'stock' => $validated['stock'],
+            'status' => $this->resolveStatusFromStock((int) $validated['stock']),
+            'description' => $description !== '' ? $description : null,
+            'image' => $image !== '' ? $image : null,
+        ]);
+
+        $product->load('category');
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Produk berhasil ditambahkan',
+                'product' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'price' => (float) $product->price,
+                    'discount' => (float) ($product->discount ?? 0),
+                    'stock' => (int) $product->stock,
+                    'image' => $product->image,
+                    'category_slug' => $product->category?->slug,
+                    'category_name' => $product->category?->name,
+                ],
+            ], 201);
+        }
+
+        return redirect()->route('kelola.produk')
             ->with('message', 'Produk berhasil ditambahkan');
     }
 
@@ -91,19 +151,102 @@ class StaffProdukController extends Controller
      */
     public function update(Request $request, $id)
     {
+        $user = $request->user();
+
+        if (!$user || !in_array($user->role, ['staff', 'developer'], true)) {
+            abort(403, 'Access denied. Only staff and developer can update products.');
+        }
+
+        $product = Product::findOrFail($id);
+
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'sku' => 'sometimes|string',
-            'category' => 'sometimes|string',
+            'sku' => [
+                'sometimes',
+                'string',
+                'max:255',
+                Rule::unique('products', 'sku')->ignore($product->id),
+            ],
+            'category' => 'sometimes|string|max:100',
             'price' => 'sometimes|numeric|min:0',
+            'discount' => 'sometimes|numeric|min:0|max:100',
             'stock' => 'sometimes|integer|min:0',
-            'description' => 'sometimes|string',
+            'description' => 'sometimes|nullable|string',
+            'image' => 'sometimes|nullable|string|max:2048',
         ]);
 
-        // Update product
-        Product::find($id)->update($validated);
+        $payload = [];
 
-        return redirect()->route('staff.produk.index')
+        if (array_key_exists('name', $validated)) {
+            $payload['name'] = trim((string) $validated['name']);
+        }
+
+        if (array_key_exists('sku', $validated)) {
+            $payload['sku'] = trim((string) $validated['sku']);
+        }
+
+        if (array_key_exists('price', $validated)) {
+            $payload['price'] = $validated['price'];
+        }
+
+        if (array_key_exists('discount', $validated)) {
+            $payload['discount'] = (float) $validated['discount'];
+        }
+
+        if (array_key_exists('stock', $validated)) {
+            $payload['stock'] = $validated['stock'];
+        }
+
+        if (array_key_exists('description', $validated)) {
+            $description = is_string($validated['description'])
+                ? trim($validated['description'])
+                : null;
+            $payload['description'] = $description !== '' ? $description : null;
+        }
+
+        if (array_key_exists('image', $validated)) {
+            $image = is_string($validated['image'])
+                ? trim($validated['image'])
+                : null;
+            $payload['image'] = $image !== '' ? $image : null;
+        }
+
+        if (array_key_exists('category', $validated)) {
+            $categoryId = $this->resolveCategoryId((string) $validated['category']);
+
+            if (!$categoryId) {
+                throw ValidationException::withMessages([
+                    'category' => ['Kategori produk tidak valid.'],
+                ]);
+            }
+
+            $payload['category_id'] = $categoryId;
+        }
+
+        if (!empty($payload)) {
+            $product->update($payload);
+        }
+
+        $product->load('category');
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Produk berhasil diperbarui',
+                'product' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'price' => (float) $product->price,
+                    'discount' => (float) ($product->discount ?? 0),
+                    'stock' => (int) $product->stock,
+                    'image' => $product->image,
+                    'category_slug' => $product->category?->slug,
+                    'category_name' => $product->category?->name,
+                ],
+            ]);
+        }
+
+        return redirect()->route('kelola.produk')
             ->with('message', 'Produk berhasil diperbarui');
     }
 
@@ -115,7 +258,7 @@ class StaffProdukController extends Controller
         // Delete product
         // Product::find($id)->delete();
 
-        return redirect()->route('staff.produk.index')
+        return redirect()->route('kelola.produk')
             ->with('message', 'Produk berhasil dihapus');
     }
 
@@ -132,6 +275,7 @@ class StaffProdukController extends Controller
                 'category' => $product->category->name,
                 'category_id' => $product->category_id,
                 'price' => $product->price,
+                'discount' => (float) ($product->discount ?? 0),
                 'stock' => $product->stock,
                 'status' => $product->status,
                 'description' => $product->description,
@@ -140,5 +284,46 @@ class StaffProdukController extends Controller
         });
 
         return response()->json($products);
+    }
+
+    private function resolveCategoryId(string $category): ?int
+    {
+        $normalized = strtolower(trim($category));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $aliases = [
+            'chair' => ['kursi'],
+            'accessories' => ['holder-stand', 'meja'],
+            'gamepad' => ['docking-station'],
+            'deskmat' => ['mousepad'],
+        ];
+
+        $candidateSlugs = array_merge([$normalized], $aliases[$normalized] ?? []);
+
+        foreach ($candidateSlugs as $slug) {
+            $matchedCategory = Category::where('slug', $slug)->first(['id']);
+
+            if ($matchedCategory) {
+                return (int) $matchedCategory->id;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveStatusFromStock(int $stock): string
+    {
+        if ($stock <= 0) {
+            return 'Out of Stock';
+        }
+
+        if ($stock < 10) {
+            return 'Low Stock';
+        }
+
+        return 'Active';
     }
 }

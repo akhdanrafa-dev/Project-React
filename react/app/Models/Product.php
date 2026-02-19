@@ -12,6 +12,7 @@ class Product extends Model
         'sku',
         'category_id',
         'price',
+        'discount',
         'stock',
         'status',
         'description',
@@ -20,6 +21,7 @@ class Product extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'discount' => 'decimal:2',
     ];
 
     public function category(): BelongsTo

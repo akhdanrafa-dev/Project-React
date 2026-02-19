@@ -85,7 +85,7 @@ class UserController extends Controller
             'role' => ['required', 'in:user,staff,admin_it,developer'],
         ]);
 
-        if ($validated['password']) {
+        if (!empty($validated['password'])) {
             $validated['password'] = bcrypt($validated['password']);
         } else {
             unset($validated['password']);

@@ -28,15 +28,7 @@ const breadcrumbs: BreadcrumbItemData[] = [
     },
 ];
 
-interface Props {
-  products?: unknown;
-  categories?: unknown;
-  selectedCategory?: unknown;
-  searchTerm?: string;
-  role?: string;
-}
-
-export default function StaffKelolaProduk(_props: Props) {
+export default function StaffKelolaProduk() {
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Kelola Produk" />
@@ -77,6 +69,7 @@ function StaffKelolaProdukContent() {
     sku: '',
     category: '',
     price: '',
+    discount: '0',
     stock: '',
     image: '',
   }))
@@ -110,6 +103,7 @@ function StaffKelolaProdukContent() {
       sku: '',
       category: '',
       price: '',
+      discount: '0',
       stock: '',
       image: '',
     })
@@ -157,7 +151,7 @@ function StaffKelolaProdukContent() {
 
     setIsSubmitting(true)
     try {
-      addProduct({
+      await addProduct({
         name: trimmedName,
         sku: trimmedSku,
         category: selectedCategory.id,
@@ -169,7 +163,7 @@ function StaffKelolaProdukContent() {
       resetNewProduct()
     } catch (error) {
       console.error('Error creating product:', error)
-      setFormError('Terjadi kesalahan saat menambahkan produk.')
+      setFormError(error instanceof Error ? error.message : 'Terjadi kesalahan saat menambahkan produk.')
     } finally {
       setIsSubmitting(false)
     }
@@ -188,6 +182,7 @@ function StaffKelolaProdukContent() {
       sku: product.sku,
       category: product.category,
       price: String(product.price),
+      discount: String(product.discount ?? 0),
       stock: String(product.stock),
       image: product.image ?? '',
     })
@@ -205,6 +200,7 @@ function StaffKelolaProdukContent() {
       ? categories.find((category) => category.id === editProduct.category)
       : null
     const priceValue = Number(editProduct.price)
+    const discountValue = Number(editProduct.discount)
     const stockValue = Number(editProduct.stock)
 
     if (!trimmedName) {
@@ -227,6 +223,14 @@ function StaffKelolaProdukContent() {
       setEditError('Harga harus berupa angka yang valid.')
       return
     }
+    if (editProduct.discount.trim() === '') {
+      setEditError('Diskon wajib diisi.')
+      return
+    }
+    if (!Number.isFinite(discountValue) || discountValue < 0 || discountValue > 100) {
+      setEditError('Diskon harus berupa angka 0 sampai 100.')
+      return
+    }
     if (editProduct.stock.trim() === '') {
       setEditError('Stok wajib diisi.')
       return
@@ -238,11 +242,12 @@ function StaffKelolaProdukContent() {
 
     setIsEditSubmitting(true)
     try {
-      updateProduct(selectedProduct.id, {
+      await updateProduct(selectedProduct.id, {
         name: trimmedName,
         sku: trimmedSku,
         category: selectedCategory.id,
         price: priceValue,
+        discount: discountValue,
         stock: stockValue,
         image: editProduct.image.trim(),
       })
@@ -251,7 +256,7 @@ function StaffKelolaProdukContent() {
       resetEditProduct()
     } catch (error) {
       console.error('Error updating product:', error)
-      setEditError('Terjadi kesalahan saat memperbarui produk.')
+      setEditError(error instanceof Error ? error.message : 'Terjadi kesalahan saat memperbarui produk.')
     } finally {
       setIsEditSubmitting(false)
     }
@@ -286,6 +291,23 @@ function StaffKelolaProdukContent() {
 
   const formatPrice = (price: number) => {
     return `Rp ${price.toLocaleString('id-ID')}`
+  }
+
+  const getFinalPrice = (price: number, discount?: number) => {
+    const safePrice = Number.isFinite(price) ? Math.max(0, Number(price)) : 0
+    const safeDiscount = Number.isFinite(discount)
+      ? Math.min(100, Math.max(0, Number(discount)))
+      : 0
+
+    return Math.max(0, safePrice - (safePrice * safeDiscount) / 100)
+  }
+
+  const formatDiscount = (discount?: number) => {
+    const safeDiscount = Number.isFinite(discount)
+      ? Number(discount)
+      : 0
+
+    return `${safeDiscount.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`
   }
 
   const getCategoryName = (categoryId: string) => {
@@ -487,8 +509,18 @@ function StaffKelolaProdukContent() {
 
               <CardContent className="space-y-3">
                 <p className="text-lg font-semibold text-green-600">
-                  {formatPrice(product.price)}
+                  {formatPrice(getFinalPrice(product.price, product.discount))}
                 </p>
+                {(product.discount ?? 0) > 0 && (
+                  <div className="space-y-1 text-xs">
+                    <p className="text-muted-foreground line-through">
+                      Harga asli {formatPrice(product.price)}
+                    </p>
+                    <p className="font-medium text-orange-600">
+                      Diskon {formatDiscount(product.discount)}
+                    </p>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Stok: {product.stock} unit
                 </p>
@@ -565,8 +597,18 @@ function StaffKelolaProdukContent() {
                   <span className="font-medium">{getCategoryName(selectedProduct.category)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Harga</span>
+                  <span className="text-muted-foreground">Harga Asli</span>
                   <span className="font-semibold text-green-600">{formatPrice(selectedProduct.price)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Diskon</span>
+                  <span className="font-medium">{formatDiscount(selectedProduct.discount)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Harga Akhir</span>
+                  <span className="font-semibold text-green-600">
+                    {formatPrice(getFinalPrice(selectedProduct.price, selectedProduct.discount))}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Stok</span>
@@ -649,6 +691,20 @@ function StaffKelolaProdukContent() {
                   value={editProduct.price}
                   onChange={(e) => setEditProduct({ ...editProduct, price: e.target.value })}
                   placeholder="0"
+                  disabled={isEditSubmitting}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-product-discount">Diskon (%)</Label>
+                <Input
+                  id="edit-product-discount"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={editProduct.discount}
+                  onChange={(e) => setEditProduct({ ...editProduct, discount: e.target.value })}
+                  placeholder="Contoh: 10"
                   disabled={isEditSubmitting}
                 />
               </div>

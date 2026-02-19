@@ -20,8 +20,11 @@ type CatalogProductInput = Omit<CatalogProduct, "id">
 type CatalogContextType = {
   products: CatalogProduct[]
   categories: CatalogCategory[]
-  addProduct: (product: CatalogProductInput) => void
-  updateProduct: (id: number, updates: Partial<CatalogProduct>) => void
+  addProduct: (product: CatalogProductInput) => Promise<void>
+  updateProduct: (
+    id: number,
+    updates: Partial<CatalogProduct>
+  ) => Promise<void>
   removeProduct: (id: number) => void
   adjustStock: (id: number, delta: number) => void
   setStock: (id: number, stock: number) => void
@@ -58,6 +61,7 @@ type ApiCatalogProduct = {
   id?: number
   name?: string
   price?: number
+  discount?: number | null
   image?: string | null
   category?: string | null
   category_name?: string | null
@@ -68,11 +72,22 @@ type ApiCatalogProduct = {
 
 const createSku = (id: number) => `PRD-${String(id).padStart(4, "0")}`
 
+const getCsrfToken = () => {
+  if (typeof document === "undefined") return ""
+
+  return (
+    document
+      .querySelector('meta[name="csrf-token"]')
+      ?.getAttribute("content") ?? ""
+  )
+}
+
 function buildFallback(id: number): CatalogProduct {
   return {
     id,
     name: `Produk ${id}`,
     price: 0,
+    discount: 0,
     image: "",
     category: defaultCategoryId,
     stock: 0,
@@ -97,6 +112,15 @@ function normalizeProduct(
     ? Number(raw.price)
     : fallback.price
 
+  const safePrice = Math.max(0, price)
+  const fallbackDiscount = Number.isFinite(fallback.discount)
+    ? Math.max(0, Number(fallback.discount))
+    : 0
+  const rawDiscount = Number.isFinite(raw.discount)
+    ? Math.max(0, Number(raw.discount))
+    : fallbackDiscount
+  const discount = Math.min(100, rawDiscount)
+
   const image =
     typeof raw.image === "string" && raw.image.trim()
       ? raw.image.trim()
@@ -119,7 +143,8 @@ function normalizeProduct(
   return {
     id,
     name,
-    price: Math.max(0, price),
+    price: safePrice,
+    discount,
     image,
     category,
     stock,
@@ -202,6 +227,7 @@ function normalizeApiProducts(raw: unknown): CatalogProduct[] {
           name: rawProduct.name,
           sku: rawProduct.sku,
           price: Number(rawProduct.price),
+          discount: Number(rawProduct.discount),
           stock: Number(rawProduct.stock),
           image:
             typeof rawProduct.image === "string"
@@ -347,29 +373,207 @@ export function CatalogProvider({
     }
   }, [])
 
-  function addProduct(product: CatalogProductInput) {
-    setProducts((prev) => {
-      const nextId = prev.length
-        ? Math.max(...prev.map((item) => item.id)) + 1
-        : 1
-      const nextProduct: CatalogProduct = {
-        id: nextId,
-        name: product.name.trim(),
-        price: Math.max(0, Number(product.price)),
-        image: product.image.trim(),
-        category: product.category,
-        stock: Math.max(0, Math.floor(Number(product.stock))),
-        sku: product.sku?.trim() || createSku(nextId),
-      }
+  async function addProduct(product: CatalogProductInput) {
+    const requestBody = {
+      name: product.name.trim(),
+      sku: product.sku?.trim() || "",
+      category: product.category,
+      price: Math.max(0, Number(product.price)),
+      discount: Number.isFinite(product.discount)
+        ? Math.min(
+            100,
+            Math.max(0, Number(product.discount))
+          )
+        : 0,
+      stock: Math.max(0, Math.floor(Number(product.stock))),
+      image: product.image.trim(),
+    }
 
-      return [...prev, nextProduct]
+    const response = await fetch("/kelola-produk", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRF-Token": getCsrfToken(),
+      },
+      body: JSON.stringify(requestBody),
+    })
+
+    const contentType =
+      response.headers.get("content-type") ?? ""
+    const responsePayload: unknown =
+      contentType.includes("application/json")
+        ? await response.json()
+        : { message: await response.text() }
+
+    if (!response.ok) {
+      const validationErrors =
+        typeof responsePayload === "object" &&
+        responsePayload !== null &&
+        "errors" in responsePayload
+          ? (
+              responsePayload as {
+                errors?: Record<string, string[]>
+              }
+            ).errors
+          : undefined
+
+      const firstError = validationErrors
+        ? Object.values(validationErrors)[0]?.[0]
+        : undefined
+
+      const message =
+        firstError ||
+        (typeof responsePayload === "object" &&
+        responsePayload !== null &&
+        "message" in responsePayload &&
+        typeof (
+          responsePayload as { message?: unknown }
+        ).message === "string"
+          ? (
+              responsePayload as { message: string }
+            ).message
+          : `Failed to create product (status: ${response.status})`)
+
+      throw new Error(message)
+    }
+
+    const createdProduct =
+      typeof responsePayload === "object" &&
+      responsePayload !== null &&
+      "product" in responsePayload &&
+      typeof (
+        responsePayload as { product?: unknown }
+      ).product === "object" &&
+      (responsePayload as { product?: unknown }).product !== null
+        ? (
+            responsePayload as {
+              product: Record<string, unknown>
+            }
+          ).product
+        : null
+
+    const parsedId = Number(createdProduct?.id)
+    if (!Number.isFinite(parsedId)) {
+      await refreshProducts()
+      return
+    }
+
+    const fallback = buildFallback(parsedId)
+    const normalizedCreated = normalizeProduct(
+      {
+        id: parsedId,
+        name:
+          typeof createdProduct?.name === "string"
+            ? createdProduct.name
+            : fallback.name,
+        sku:
+          typeof createdProduct?.sku === "string"
+            ? createdProduct.sku
+            : fallback.sku,
+        price: Number(createdProduct?.price),
+        discount: Number(createdProduct?.discount),
+        stock: Number(createdProduct?.stock),
+        image:
+          typeof createdProduct?.image === "string"
+            ? createdProduct.image
+            : "",
+        category: normalizeCategoryId(
+          createdProduct?.category_slug ??
+            createdProduct?.category
+        ),
+      },
+      fallback
+    )
+
+    setProducts((prev) => {
+      const withoutCurrent = prev.filter(
+        (item) => item.id !== normalizedCreated.id
+      )
+
+      return [...withoutCurrent, normalizedCreated].sort(
+        (a, b) => a.id - b.id
+      )
     })
   }
 
-  function updateProduct(
+  async function updateProduct(
     id: number,
     updates: Partial<CatalogProduct>
   ) {
+    const requestBody: Partial<CatalogProduct> = {}
+
+    if (typeof updates.name === "string") {
+      requestBody.name = updates.name.trim()
+    }
+
+    if (typeof updates.sku === "string") {
+      requestBody.sku = updates.sku.trim()
+    }
+
+    if (typeof updates.category === "string") {
+      requestBody.category = updates.category
+    }
+
+    if (Number.isFinite(updates.price)) {
+      requestBody.price = Math.max(0, Number(updates.price))
+    }
+
+    if (Number.isFinite(updates.discount)) {
+      requestBody.discount = Math.min(
+        100,
+        Math.max(0, Number(updates.discount))
+      )
+    }
+
+    if (Number.isFinite(updates.stock)) {
+      requestBody.stock = Math.max(
+        0,
+        Math.floor(Number(updates.stock))
+      )
+    }
+
+    if (typeof updates.image === "string") {
+      requestBody.image = updates.image.trim()
+    }
+
+    const response = await fetch(`/kelola-produk/${id}`, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRF-Token": getCsrfToken(),
+      },
+      body: JSON.stringify(requestBody),
+    })
+
+    const contentType =
+      response.headers.get("content-type") ?? ""
+    const responsePayload: unknown =
+      contentType.includes("application/json")
+        ? await response.json()
+        : { message: await response.text() }
+
+    if (!response.ok) {
+      const message =
+        typeof responsePayload === "object" &&
+        responsePayload !== null &&
+        "message" in responsePayload &&
+        typeof (
+          responsePayload as { message?: unknown }
+        ).message === "string"
+          ? (
+              responsePayload as { message: string }
+            ).message
+          : `Failed to update product (status: ${response.status})`
+
+      throw new Error(message)
+    }
+
     setProducts((prev) =>
       prev.map((product) => {
         if (product.id !== id) return product
@@ -383,8 +587,23 @@ export function CatalogProvider({
           ? Math.max(0, Number(updates.price))
           : product.price
 
+        const discountCandidate = Number.isFinite(
+          updates.discount
+        )
+          ? Math.min(
+              100,
+              Math.max(0, Number(updates.discount))
+            )
+          : Number.isFinite(product.discount)
+            ? Math.min(
+                100,
+                Math.max(0, Number(product.discount))
+              )
+            : 0
+        const nextDiscount = discountCandidate
+
         const nextImage =
-          typeof updates.image === "string" && updates.image.trim()
+          typeof updates.image === "string"
             ? updates.image.trim()
             : product.image
 
@@ -406,6 +625,7 @@ export function CatalogProvider({
           ...product,
           name: nextName,
           price: nextPrice,
+          discount: nextDiscount,
           image: nextImage,
           category: nextCategory,
           stock: nextStock,
