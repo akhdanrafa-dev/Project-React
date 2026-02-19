@@ -11,6 +11,7 @@ use Inertia\Inertia;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\BugTicketController;
 use App\Http\Controllers\ChatMessageController;
+use App\Http\Controllers\ChatbotAIController;
 use App\Http\Controllers\AdminITController;
 use App\Http\Controllers\StaffProdukController;
 use App\Http\Controllers\OrderController;
@@ -153,6 +154,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/api/bug-tickets/{bugTicket}/mark-as-read', [BugTicketController::class, 'markTicketAsRead']);
     Route::patch('/api/bug-tickets/{bugTicket}/take', [BugTicketController::class, 'take']);
     Route::post('/api/bug-tickets/{bugTicket}/appeal', [BugTicketController::class, 'submitAppeal']);
+    Route::post('/api/chatbot/reply', [ChatbotAIController::class, 'reply']);
 
     /*
     |--------------------------------------------------------------------------
