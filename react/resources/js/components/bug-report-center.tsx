@@ -43,11 +43,13 @@ interface BugTicket {
 
 interface BugReportCenterProps {
   currentUserId: number
+  currentUserRole?: string
   unreadCount?: number
 }
 
 export function BugReportCenter({
   currentUserId,
+  currentUserRole = "",
   unreadCount: initialUnreadCount = 0,
 }: BugReportCenterProps) {
   const [tickets, setTickets] = useState<BugTicket[]>([])
@@ -175,14 +177,12 @@ export function BugReportCenter({
       <Dialog open={centerOpen} onOpenChange={setCenterOpen}>
         <DialogTrigger asChild>
           <Button
-            variant="outline"
-            size="icon"
-            className="relative rounded-full w-12 h-12 flex items-center justify-center hover:bg-purple-50 dark:hover:bg-purple-950"
+            className="relative hover:bg-purple-50 dark:hover:bg-purple-950"
             title="Pusat Laporan"
           >
-            <MessageSquare className="h-5 w-5" />
+            Buat Laporan
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center h-5 w-5 bg-red-500 text-white text-xs rounded-full font-bold">
+              <span className="absolute -top-2 -right-2 flex items-center justify-center h-5 w-5 bg-red-500 text-white text-xs rounded-full font-bold">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
@@ -273,6 +273,7 @@ export function BugReportCenter({
         onOpenChange={setChatOpen}
         ticket={selectedTicket}
         currentUserId={currentUserId}
+        currentUserRole={currentUserRole}
       />
     </>
   )

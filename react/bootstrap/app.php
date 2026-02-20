@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CheckAdminITRole;
 use App\Http\Middleware\CheckDeveloperRole;
 use App\Http\Middleware\CheckStaffRole;
 use App\Http\Middleware\HandleAppearance;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
+            'admin_it' => CheckAdminITRole::class,
             'developer' => CheckDeveloperRole::class,
             'staff' => CheckStaffRole::class,
         ]);

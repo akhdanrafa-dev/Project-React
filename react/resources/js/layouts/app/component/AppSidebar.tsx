@@ -21,6 +21,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar-trigger"
 import { edit as editAppearance } from "@/routes/appearance"
+import { type SharedData } from "@/types"
 
 import { DeveloperSidebar } from "./DeveloperSidebar"
 import { StaffSidebar } from "./StaffSidebar"
@@ -29,11 +30,6 @@ import { StaffSidebar } from "./StaffSidebar"
 
 // ================= DATA =================
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatar/shadcn.jpg",
-  },
   teams: [
     { name: "Acount 1", logo: BookOpen, plan: "Enterprise" },
     { name: "Account 2", logo: Command, plan: "Pro" },
@@ -112,7 +108,7 @@ function getNavMainForRole(role?: string) {
 export function AppSidebar(
   props: React.ComponentProps<typeof Sidebar>
 ) {
-  const { auth } = usePage().props as any
+  const { auth } = usePage<SharedData>().props
   const userRole = auth?.user?.role
 
   const roleSidebar = getSidebarForRole(userRole)
@@ -121,6 +117,12 @@ export function AppSidebar(
   }
 
   const navMain = getNavMainForRole(userRole)
+
+  const user = {
+    name: auth.user?.name || "User",
+    email: auth.user?.email || "user@example.com",
+    avatar: auth.user?.avatar || "/avatar/shadcn.jpg",
+  }
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -133,7 +135,7 @@ export function AppSidebar(
       </SidebarContent>
 
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} />
       </SidebarFooter>
 
       <SidebarRail />

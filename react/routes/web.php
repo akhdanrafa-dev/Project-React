@@ -67,48 +67,69 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/developer-dashboard', fn () => Inertia::render('developer-dashboard'))
         ->name('developer.dashboard');
 
-    Route::get('/admin-it-dashboard', fn () => Inertia::render('admin-it-dashboard'))
-        ->name('admin-it.dashboard');
+    Route::middleware(['admin_it'])->group(function () {
+        Route::get('/admin-it-dashboard', fn () => Inertia::render('admin-it-dashboard'))
+            ->name('admin-it.dashboard');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Admin IT Profile
-    |--------------------------------------------------------------------------
-    */
-    // redirect profile ke user login
-    Route::get('/admin-it/profile', function () {
-        return redirect()->route(
-            'admin-it.profile.show',
-            ['id' => auth()->id()]
-        );
-    })->name('admin-it.profile');
+        /*
+        |--------------------------------------------------------------------------
+        | Admin IT Profile
+        |--------------------------------------------------------------------------
+        */
+        // redirect profile ke user login
+        Route::get('/admin-it/profile', function () {
+            return redirect()->route(
+                'admin-it.profile.show',
+                ['id' => auth()->id()]
+            );
+        })->name('admin-it.profile');
 
-    // profile by id
-    Route::get(
-        '/admin-it/profile/{id}',
-        [AdminITController::class, 'showProfile']
-    )->name('admin-it.profile.show');
+        // profile by id
+        Route::get(
+            '/admin-it/profile/{id}',
+            [AdminITController::class, 'showProfile']
+        )->name('admin-it.profile.show');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Admin IT Statistics & Ranking
-    |--------------------------------------------------------------------------
-    */
-    
-    // Page Routes (harus didefinisikan sebelum API routes)
-    Route::get('/admin-it/statistics-page', function () {
-        return Inertia::render('AdminITStatistics');
-    })->name('admin-it.statistics.page');
+        /*
+        |--------------------------------------------------------------------------
+        | Admin IT Statistics & Ranking
+        |--------------------------------------------------------------------------
+        */
+        // Page Routes (harus didefinisikan sebelum API routes)
+        Route::get('/admin-it/statistics-page', function () {
+            return Inertia::render('AdminITStatistics');
+        })->name('admin-it.statistics.page');
+
+        // API Routes
+        Route::get(
+            '/admin-it/statistics/{adminId}',
+            [BugTicketController::class, 'getAdminStats']
+        )->name('admin-it.statistics');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Admin IT Tickets & Chat
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/admin-it/tickets', fn () => Inertia::render('admin-it-tickets'))
+            ->name('admin-it.tickets');
+
+        Route::get('/admin-it/chats', fn () => Inertia::render('admin-it-chats'))
+            ->name('admin-it.chats');
+
+        Route::get('/admin-it/chat-archives', fn () => Inertia::render('admin-it-chat-archive'))
+            ->name('admin-it.chat-archives');
+
+        Route::get('/admin-it/ticket/{ticketId}', function ($ticketId) {
+            return Inertia::render('admin-it-chat', [
+                'ticketId' => (int) $ticketId,
+            ]);
+        })->name('admin-it.chat');
+    });
 
     Route::get('/admin-it/ranking-admin', function () {
         return Inertia::render('admin-it-ranking-admin');
     })->middleware('developer')->name('admin-it.ranking-admin');
-
-    // API Routes
-    Route::get(
-        '/admin-it/statistics/{adminId}',
-        [BugTicketController::class, 'getAdminStats']
-    )->name('admin-it.statistics');
 
     Route::get(
         '/admin-it/rankings',
@@ -119,26 +140,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         '/admin-it/rankings/activity-stats',
         [BugTicketController::class, 'getAdminActivityStats']
     )->middleware('developer')->name('admin-it.rankings.activity');
-
-    /*
-    |--------------------------------------------------------------------------
-    | Admin IT Tickets & Chat
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/admin-it/tickets', fn () => Inertia::render('admin-it-tickets'))
-        ->name('admin-it.tickets');
-
-    Route::get('/admin-it/chats', fn () => Inertia::render('admin-it-chats'))
-        ->name('admin-it.chats');
-
-    Route::get('/admin-it/chat-archives', fn () => Inertia::render('admin-it-chat-archive'))
-        ->name('admin-it.chat-archives');
-
-    Route::get('/admin-it/ticket/{ticketId}', function ($ticketId) {
-        return Inertia::render('admin-it-chat', [
-            'ticketId' => (int) $ticketId,
-        ]);
-    })->name('admin-it.chat');
 
     /*
     |--------------------------------------------------------------------------

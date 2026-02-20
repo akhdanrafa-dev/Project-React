@@ -218,7 +218,13 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
                         <div className="relative flex items-center space-x-1">
                             {auth?.user?.id && (
                                 <>
-                                    <BugReportCenter currentUserId={auth.user.id} unreadCount={unreadCount} />
+                                    <BugReportCenter
+                                        currentUserId={auth.user.id}
+                                        currentUserRole={
+                                            typeof auth.user.role === 'string' ? auth.user.role : ''
+                                        }
+                                        unreadCount={unreadCount}
+                                    />
                                     <BugReportForm />
                                 </>
                             )}

@@ -48,6 +48,7 @@ interface BugReportChatProps {
   onOpenChange: (open: boolean) => void
   ticket: BugTicket | null
   currentUserId: number
+  currentUserRole?: string
 }
 
 const getCsrfToken = () => {
@@ -61,6 +62,7 @@ export function BugReportChat({
   onOpenChange,
   ticket,
   currentUserId,
+  currentUserRole = "",
 }: BugReportChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
@@ -325,6 +327,9 @@ export function BugReportChat({
 
   if (!ticket) return null
 
+  const isAdminIT = currentUserRole === "admin_it"
+  const isTicketOwner = ticket.user_id === currentUserId
+
   const getStatusColor = (status: string) => {
     const baseStatus = status.split(" ")[0]
     switch (status) {
@@ -488,32 +493,40 @@ export function BugReportChat({
                 Chat telah ditutup karena tiket ini sudah ditutup.
               </div>
             ) : ticket.status === "diproses kembali" ? (
-              <div className="space-y-3 p-4 border rounded-lg bg-blue-50 border-blue-200">
-                <p className="text-sm font-medium text-blue-900">Status: Diproses Kembali</p>
-                <p className="text-sm text-blue-800">
-                  Tiket ini memiliki aju banding. Setelah meninjau, pilih salah satu:
-                </p>
-                <div className="flex gap-2 flex-wrap">
-                  <Button
-                    onClick={handleMarkAsResolved}
-                    disabled={markingAsResolved}
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    {markingAsResolved ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}
-                    Tetap Resolved
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={markingAsResolved}
-                    className="text-blue-600 border-blue-200"
-                  >
-                    Perbaharui Solusi & Chat
-                  </Button>
+              isAdminIT ? (
+                <div className="space-y-3 p-4 border rounded-lg bg-blue-50 border-blue-200">
+                  <p className="text-sm font-medium text-blue-900">Status: Diproses Kembali</p>
+                  <p className="text-sm text-blue-800">
+                    Tiket ini memiliki aju banding. Setelah meninjau, pilih salah satu:
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      onClick={handleMarkAsResolved}
+                      disabled={markingAsResolved}
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      {markingAsResolved ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}
+                      Tetap Resolved
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={markingAsResolved}
+                      className="text-blue-600 border-blue-200"
+                    >
+                      Perbaharui Solusi & Chat
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ) : ticket.status?.toLowerCase() === "resolved" && !showAppealForm ? (
+              ) : (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertDescription className="text-blue-800">
+                    Aju banding sedang ditinjau Admin IT. Mohon tunggu pembaruan dari tim support.
+                  </AlertDescription>
+                </Alert>
+              )
+            ) : ticket.status?.toLowerCase() === "resolved" && !showAppealForm && isTicketOwner ? (
               <>
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-gray-700">Apakah Anda puas dengan solusi ini?</p>
@@ -554,7 +567,7 @@ export function BugReportChat({
               </>
             ) : (
               <>
-                {showAppealForm && ticket.status?.toLowerCase() === "resolved" ? (
+                {showAppealForm && ticket.status?.toLowerCase() === "resolved" && isTicketOwner ? (
                   <form onSubmit={handleSubmitAppeal} className="space-y-3">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Alasan Aju Banding *</label>

@@ -107,7 +107,7 @@ export function StaffSidebar(
       </SidebarContent>
 
       <SidebarFooter className="flex flex-col gap-2">
-        <NavUser user={{ name: user.name || "Staff", email: user.email || "staff@example.com", avatar: "/avatar/staff.jpg" }} />
+        <NavUser user={{ name: user.name || "Staff", email: user.email || "staff@example.com", avatar: user.avatar || "/avatar/staff.jpg" }} />
 
       
       </SidebarFooter>

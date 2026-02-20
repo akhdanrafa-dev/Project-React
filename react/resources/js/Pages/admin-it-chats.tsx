@@ -63,6 +63,8 @@ const getCsrfToken = () => {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
 }
 
+const isChatTicketVisible = (ticket: Pick<Ticket, 'status'>) => ticket.status !== 'closed'
+
 export default function AdminITChats() {
   const { auth } = usePage<SharedData>().props
   const [tickets, setTickets] = useState<Ticket[]>([])
@@ -73,7 +75,10 @@ export default function AdminITChats() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const autoScrollRef = useRef(true)
+  const lastTicketIdRef = useRef<number | null>(null)
+  const lastMessageCountRef = useRef(0)
   const currentUserId = auth.user?.id || 0
 
   useEffect(() => {
@@ -100,11 +105,44 @@ export default function AdminITChats() {
   }, [selectedTicketId])
 
   useEffect(() => {
-    scrollToBottom()
-  }, [selectedTicket?.messages])
+    const currentTicketId = selectedTicket?.id ?? null
+    const currentMessageCount = selectedTicket?.messages?.length ?? 0
+    const ticketChanged = lastTicketIdRef.current !== currentTicketId
+    const hasNewMessages = currentMessageCount > lastMessageCountRef.current
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (ticketChanged) {
+      requestAnimationFrame(() => {
+        scrollToBottom('auto')
+      })
+      autoScrollRef.current = true
+    } else if (hasNewMessages && autoScrollRef.current) {
+      requestAnimationFrame(() => {
+        scrollToBottom('smooth')
+      })
+    }
+
+    lastTicketIdRef.current = currentTicketId
+    lastMessageCountRef.current = currentMessageCount
+  }, [selectedTicket?.id, selectedTicket?.messages?.length])
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior,
+    })
+  }
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight
+
+    autoScrollRef.current = distanceFromBottom < 80
   }
 
   const fetchTickets = async (isPolling = false) => {
@@ -121,10 +159,19 @@ export default function AdminITChats() {
       })
       if (!response.ok) throw new Error('Gagal mengambil tiket')
 
-      const data = await response.json()
-      setTickets(data)
-      if (!selectedTicketId && data.length > 0) {
-        selectTicket(data[0].id)
+      const data: Ticket[] = await response.json()
+      const activeTickets = data.filter(isChatTicketVisible)
+      setTickets(activeTickets)
+
+      const hasSelected = selectedTicketId !== null
+      const selectedStillExists =
+        hasSelected && activeTickets.some(ticket => ticket.id === selectedTicketId)
+
+      if (activeTickets.length === 0) {
+        setSelectedTicketId(null)
+        setSelectedTicket(null)
+      } else if (!selectedStillExists) {
+        selectTicket(activeTickets[0].id)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
@@ -150,7 +197,15 @@ export default function AdminITChats() {
         credentials: 'same-origin',
       })
       if (!response.ok) throw new Error('Gagal mengambil detail tiket')
-      const data = await response.json()
+      const data: Ticket = await response.json()
+
+      if (!isChatTicketVisible(data)) {
+        setSelectedTicketId(null)
+        setSelectedTicket(null)
+        await fetchTickets(true)
+        return
+      }
+
       setSelectedTicket(data)
       await fetch(`/api/bug-tickets/${ticketId}/messages/mark-all-as-read`, {
         method: 'PATCH',
@@ -408,7 +463,11 @@ export default function AdminITChats() {
             </CardHeader>
 
             <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/30">
+              <div
+                ref={messagesContainerRef}
+                onScroll={handleMessagesScroll}
+                className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/30"
+              >
                 {loadingTicketDetails ? (
                   <p className="text-sm text-muted-foreground">Memuat chat...</p>
                 ) : !selectedTicket ? (
@@ -449,7 +508,6 @@ export default function AdminITChats() {
                     </div>
                   ))
                 )}
-                <div ref={messagesEndRef} />
               </div>
 
               <form onSubmit={handleSendMessage} className="border-t p-4 space-y-3">

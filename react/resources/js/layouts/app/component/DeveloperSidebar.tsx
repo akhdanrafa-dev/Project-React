@@ -1,5 +1,6 @@
 "use client"
 
+import { usePage } from "@inertiajs/react"
 import {
   Code2,
   Frame,
@@ -20,13 +21,9 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar-trigger"
+import { type SharedData } from "@/types"
 
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatar/shadcn.jpg",
-  },
   navMainDeveloper: [
     {
       title: "Menu Developer",
@@ -47,6 +44,14 @@ const data = {
 export function DeveloperSidebar(
   props: React.ComponentProps<typeof Sidebar>
 ) {
+  const { auth } = usePage<SharedData>().props
+
+  const user = {
+    name: auth.user?.name || "Developer",
+    email: auth.user?.email || "developer@example.com",
+    avatar: auth.user?.avatar || "/avatar/shadcn.jpg",
+  }
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -63,7 +68,7 @@ export function DeveloperSidebar(
       </SidebarContent>
 
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} />
       </SidebarFooter>
 
       <SidebarRail />

@@ -567,6 +567,7 @@ export default function AdminITDashboard() {
         }}
         ticket={selectedTicket}
         currentUserId={currentUserId}
+        currentUserRole={typeof auth.user?.role === "string" ? auth.user.role : ""}
       />
     </AdminITLayout>
   )

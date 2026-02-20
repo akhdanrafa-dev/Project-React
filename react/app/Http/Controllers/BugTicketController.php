@@ -96,6 +96,7 @@ class BugTicketController extends Controller
     {
         try {
             $this->authorize('update', $bugTicket);
+            $user = Auth::user();
 
             $validated = $request->validate([
                 'status' => 'sometimes|in:open,in_progress,resolved,closed,diproses kembali',
@@ -103,6 +104,54 @@ class BugTicketController extends Controller
                 'difficulty_level' => 'sometimes|in:easy,medium,hard',
                 'assigned_to' => 'sometimes|nullable|exists:users,id',
             ]);
+
+            if (array_key_exists('assigned_to', $validated) && $user->role !== 'admin_it') {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Hanya Admin IT yang dapat mengubah penugasan tiket.',
+                ], 403);
+            }
+
+            if (array_key_exists('priority', $validated) && $user->role !== 'admin_it') {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Hanya Admin IT yang dapat mengubah prioritas tiket.',
+                ], 403);
+            }
+
+            if (
+                array_key_exists('difficulty_level', $validated) &&
+                !in_array($user->role, ['admin_it', 'developer'], true)
+            ) {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Anda tidak memiliki izin untuk mengubah tingkat kesulitan tiket.',
+                ], 403);
+            }
+
+            if (array_key_exists('status', $validated)) {
+                $requestedStatus = $validated['status'];
+                $isTicketOwner = (int) $bugTicket->user_id === (int) $user->id;
+
+                $ownerCanCloseResolvedTicket =
+                    $requestedStatus === 'closed' &&
+                    $isTicketOwner &&
+                    $bugTicket->status === 'resolved';
+
+                if ($requestedStatus === 'closed' && $isTicketOwner && $bugTicket->status !== 'resolved') {
+                    return response()->json([
+                        'error' => 'Invalid status transition',
+                        'message' => 'Tiket hanya bisa ditutup pengguna setelah statusnya Terselesaikan.',
+                    ], 422);
+                }
+
+                if (!$ownerCanCloseResolvedTicket && $user->role !== 'admin_it') {
+                    return response()->json([
+                        'error' => 'Unauthorized',
+                        'message' => 'Perubahan status ini hanya dapat dilakukan oleh Admin IT.',
+                    ], 403);
+                }
+            }
 
             if (isset($validated['assigned_to']) && !$bugTicket->taken_at) {
                 $validated['taken_at'] = now();
@@ -319,11 +368,26 @@ class BugTicketController extends Controller
     {
         try {
             $this->authorize('update', $bugTicket);
+            $user = Auth::user();
+
+            if ($user->role !== 'admin_it') {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Hanya Admin IT yang dapat mengambil tiket.',
+                ], 403);
+            }
 
             $validated = $request->validate([
                 'assigned_to' => 'required|exists:users,id',
                 'status' => 'sometimes|in:in_progress',
             ]);
+
+            if ((int) $validated['assigned_to'] !== (int) $user->id) {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Admin IT hanya dapat mengambil tiket untuk akunnya sendiri.',
+                ], 403);
+            }
 
             $validated['taken_at'] = now();
             if (!isset($validated['status'])) {

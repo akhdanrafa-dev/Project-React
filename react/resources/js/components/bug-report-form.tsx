@@ -8,7 +8,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { Toggle } from "@/components/ui/toggle"
 import { useToast } from "@/components/ui/use-toast"
 
 interface BugReportFormProps {
@@ -170,16 +170,15 @@ export function BugReportForm({ onSuccess }: BugReportFormProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenDialog}>
-      <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="icon"
-          className="rounded-full w-12 h-12 flex items-center justify-center hover:bg-blue-50 dark:hover:bg-blue-950"
-          title="Laporkan masalah"
-        >
-          <AlertCircle className="h-5 w-5" />
-        </Button>
-      </DialogTrigger>
+      <Toggle
+        pressed={open}
+        onPressedChange={handleOpenDialog}
+        variant="outline"
+        className="rounded-full px-4 hover:bg-blue-50 dark:hover:bg-blue-950"
+        aria-label="Buat laporan"
+      >
+        Buat Laporan
+      </Toggle>
 
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>

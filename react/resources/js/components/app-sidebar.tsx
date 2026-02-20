@@ -1,6 +1,6 @@
 
 
-import { router,} from "@inertiajs/react"
+import { router, usePage } from "@inertiajs/react"
 import {
   IconCamera,
   IconChartBar,
@@ -30,14 +30,10 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar-trigger"
 import { logout } from "@/routes"
+import { type SharedData } from "@/types"
 
 
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/logo.svg",
-  },
   navMain: [
     {
       title: "Kelola Pengguna",
@@ -146,6 +142,8 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { auth } = usePage<SharedData>().props;
+  
   const handleLogout = () => {
     console.log('Logging out from sidebar...');
     router.post(logout())
@@ -160,6 +158,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
     return item
   })
+
+  const user = {
+    name: auth.user?.name || "User",
+    email: auth.user?.email || "user@example.com",
+    avatar: auth.user?.avatar || "/logo.svg",
+  }
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -179,7 +183,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={navSecondaryWithLogout} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
   )

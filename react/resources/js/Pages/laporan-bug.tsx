@@ -498,6 +498,7 @@ function LaporanBugContent() {
         onOpenChange={setChatOpen}
         ticket={selectedTicket}
         currentUserId={auth.user.id}
+        currentUserRole={typeof auth.user?.role === "string" ? auth.user.role : ""}
       />
     </>
   )

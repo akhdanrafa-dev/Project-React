@@ -103,7 +103,7 @@ export function AdminITSidebar(
       </SidebarContent>
 
       <SidebarFooter>
-        <NavUser user={{ name: user.name || "Admin IT", email: user.email || "admin@example.com", avatar: "/avatar/admin.jpg" }} />
+        <NavUser user={{ name: user.name || "Admin IT", email: user.email || "admin@example.com", avatar: user.avatar || "/avatar/admin.jpg" }} />
       </SidebarFooter>
 
       <SidebarRail />
