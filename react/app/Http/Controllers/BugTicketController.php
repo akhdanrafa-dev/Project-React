@@ -268,6 +268,21 @@ class BugTicketController extends Controller
         $thisWeek = now()->startOfWeek();
         $thisMonth = now()->startOfMonth();
         $thisYear = now()->startOfYear();
+        $completedStatuses = ['resolved', 'closed'];
+        $completedTicketsQuery = BugTicket::where('assigned_to', $adminId)
+            ->whereIn('status', $completedStatuses);
+
+        $difficultyBreakdown = [
+            'easy' => (clone $completedTicketsQuery)
+                ->where('difficulty_level', 'easy')
+                ->count(),
+            'medium' => (clone $completedTicketsQuery)
+                ->where('difficulty_level', 'medium')
+                ->count(),
+            'hard' => (clone $completedTicketsQuery)
+                ->where('difficulty_level', 'hard')
+                ->count(),
+        ];
 
         $stats = [
             'total_handled' => BugTicket::where('assigned_to', $adminId)->count(),
@@ -284,23 +299,14 @@ class BugTicketController extends Controller
                 ->whereDate('taken_at', '>=', $thisYear)
                 ->count(),
             'resolved_count' => BugTicket::where('assigned_to', $adminId)
-                ->whereIn('status', ['resolved', 'closed'])
+                ->whereIn('status', $completedStatuses)
                 ->count(),
             'in_progress_count' => BugTicket::where('assigned_to', $adminId)
                 ->where('status', 'in_progress')
                 ->count(),
             'average_resolution_time' => $this->calculateAverageResolutionTime($adminId),
-            'difficulty_breakdown' => [
-                'easy' => BugTicket::where('assigned_to', $adminId)
-                    ->where('difficulty_level', 'easy')
-                    ->count(),
-                'medium' => BugTicket::where('assigned_to', $adminId)
-                    ->where('difficulty_level', 'medium')
-                    ->count(),
-                'hard' => BugTicket::where('assigned_to', $adminId)
-                    ->where('difficulty_level', 'hard')
-                    ->count(),
-            ],
+            'difficulty_breakdown' => $difficultyBreakdown,
+            'difficulty_total' => array_sum($difficultyBreakdown),
         ];
 
         return response()->json($stats);

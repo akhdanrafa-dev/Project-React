@@ -51,6 +51,10 @@ interface Ticket {
     id: number
     name: string
   } | null
+  assigned_admin?: {
+    id: number
+    name: string
+  } | null
   user: {
     id: number
     name: string
@@ -64,6 +68,10 @@ const getCsrfToken = () => {
 }
 
 const isChatTicketVisible = (ticket: Pick<Ticket, 'status'>) => ticket.status !== 'closed'
+const normalizeTicket = (ticket: Ticket): Ticket => ({
+  ...ticket,
+  assignedAdmin: ticket.assignedAdmin ?? ticket.assigned_admin ?? null,
+})
 
 export default function AdminITChats() {
   const { auth } = usePage<SharedData>().props
@@ -160,7 +168,8 @@ export default function AdminITChats() {
       if (!response.ok) throw new Error('Gagal mengambil tiket')
 
       const data: Ticket[] = await response.json()
-      const activeTickets = data.filter(isChatTicketVisible)
+      const normalizedTickets = data.map(normalizeTicket)
+      const activeTickets = normalizedTickets.filter(isChatTicketVisible)
       setTickets(activeTickets)
 
       const hasSelected = selectedTicketId !== null
@@ -197,7 +206,7 @@ export default function AdminITChats() {
         credentials: 'same-origin',
       })
       if (!response.ok) throw new Error('Gagal mengambil detail tiket')
-      const data: Ticket = await response.json()
+      const data: Ticket = normalizeTicket(await response.json())
 
       if (!isChatTicketVisible(data)) {
         setSelectedTicketId(null)
@@ -267,7 +276,14 @@ export default function AdminITChats() {
       await fetchTicketDetails(ticketId)
       setTickets(prev =>
         prev.map(ticket =>
-          ticket.id === ticketId ? { ...ticket, status: 'in_progress', assigned_to: currentUserId } : ticket,
+          ticket.id === ticketId
+            ? {
+              ...ticket,
+              status: 'in_progress',
+              assigned_to: currentUserId,
+              assignedAdmin: selectedTicket.assignedAdmin ?? ticket.assignedAdmin ?? null,
+            }
+            : ticket,
         ),
       )
     } catch (err) {

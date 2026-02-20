@@ -30,6 +30,7 @@ interface AdminStats {
   resolved_count: number
   in_progress_count: number
   average_resolution_time: number
+  difficulty_total?: number
   difficulty_breakdown: {
     easy: number
     medium: number
@@ -106,6 +107,11 @@ export default function AdminITStatistics() {
     { name: 'Terselesaikan', value: stats.resolved_count },
     { name: 'Dalam Proses', value: stats.in_progress_count },
   ]
+  const difficultyTotal =
+    stats.difficulty_total ??
+    (stats.difficulty_breakdown.easy +
+      stats.difficulty_breakdown.medium +
+      stats.difficulty_breakdown.hard)
 
   return (
      <AdminITLayout>
@@ -212,7 +218,7 @@ export default function AdminITStatistics() {
             <CardHeader>
               <CardTitle>Distribusi Tingkat Kesulitan</CardTitle>
               <CardDescription>
-                Persentase tiket berdasarkan tingkat kesulitan
+                Distribusi tiket terselesaikan berdasarkan tingkat kesulitan
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -277,7 +283,7 @@ export default function AdminITStatistics() {
             <CardHeader>
               <CardTitle>Detail Tingkat Kesulitan</CardTitle>
               <CardDescription>
-                Rincian lengkap tiket berdasarkan kesulitan
+                Rincian tiket terselesaikan berdasarkan tingkat kesulitan
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -293,8 +299,8 @@ export default function AdminITStatistics() {
                     className="h-full bg-green-500"
                     style={{
                       width: `${
-                        stats.total_handled > 0
-                          ? (stats.difficulty_breakdown.easy / stats.total_handled) * 100
+                        difficultyTotal > 0
+                          ? (stats.difficulty_breakdown.easy / difficultyTotal) * 100
                           : 0
                       }%`,
                     }}
@@ -314,8 +320,8 @@ export default function AdminITStatistics() {
                     className="h-full bg-yellow-500"
                     style={{
                       width: `${
-                        stats.total_handled > 0
-                          ? (stats.difficulty_breakdown.medium / stats.total_handled) * 100
+                        difficultyTotal > 0
+                          ? (stats.difficulty_breakdown.medium / difficultyTotal) * 100
                           : 0
                       }%`,
                     }}
@@ -335,8 +341,8 @@ export default function AdminITStatistics() {
                     className="h-full bg-red-500"
                     style={{
                       width: `${
-                        stats.total_handled > 0
-                          ? (stats.difficulty_breakdown.hard / stats.total_handled) * 100
+                        difficultyTotal > 0
+                          ? (stats.difficulty_breakdown.hard / difficultyTotal) * 100
                           : 0
                       }%`,
                     }}
