@@ -1,5 +1,5 @@
-import { Head, usePage } from '@inertiajs/react';
-import { Plus, Search, Edit2, Trash2, Eye } from "lucide-react"
+import { Head } from '@inertiajs/react';
+import { Plus, Search, Edit2, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import {
@@ -53,6 +53,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
   const [searchTerm, setSearchTerm] = useState("")
   const [users, setUsers] = useState<User[]>(initialUsers)
   const [loading, setLoading] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -65,6 +66,10 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
     password: "",
   })
 
+  useEffect(() => {
+    setUsers(initialUsers)
+  }, [initialUsers])
+
   const filteredUsers = users.filter(u => 
     u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -76,17 +81,34 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
   }
 
+  const getFirstErrorMessage = (errors: Record<string, string[]> | undefined) => {
+    if (!errors) return null
+    const firstKey = Object.keys(errors)[0]
+    if (!firstKey) return null
+    const firstError = errors[firstKey]?.[0]
+    return firstError || null
+  }
+
   const handleCreate = async () => {
+    setCreateError(null)
+
+    if (!formData.username || !formData.email || !formData.password || !formData.role) {
+      setCreateError('Semua field wajib diisi.')
+      return
+    }
+
     setLoading(true)
     try {
       const csrfToken = getCsrfToken()
 
       const response = await fetch('/users', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-CSRF-Token': csrfToken || '',
+          'X-CSRF-TOKEN': csrfToken || '',
+          'X-Requested-With': 'XMLHttpRequest',
         },
         body: JSON.stringify({
           name: formData.username,
@@ -96,16 +118,36 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
         }),
       })
 
-      if (response.ok) {
-        // Refresh the page to get updated data
-        window.location.reload()
-      } else {
-        console.error('Failed to create user')
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        setCreateError('Respons server tidak valid. Silakan coba lagi.')
+        return
       }
-    } catch (error) {
-      console.error('Error creating user:', error)
-    } finally {
-      setLoading(false)
+
+      const payload = await response.json()
+
+      if (!response.ok) {
+        const validationError = getFirstErrorMessage(payload?.errors as Record<string, string[]> | undefined)
+        setCreateError(validationError || payload?.message || 'Gagal menambah pengguna.')
+        return
+      }
+
+      const createdUser = payload?.user
+      if (createdUser) {
+        setUsers((prev) => [
+          ...prev,
+          {
+            id: createdUser.id,
+            username: createdUser.name ?? createdUser.username ?? formData.username ?? '',
+            email: createdUser.email ?? formData.email ?? '',
+            role: createdUser.role ?? formData.role ?? 'user',
+          },
+        ])
+      } else {
+        setCreateError('Data pengguna baru tidak ditemukan pada respons server.')
+        return
+      }
+
       setIsCreateDialogOpen(false)
       setFormData({
         username: "",
@@ -113,6 +155,11 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
         role: "",
         password: "",
       })
+    } catch (error) {
+      console.error('Error creating user:', error)
+      setCreateError('Terjadi kesalahan saat menambah pengguna.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -225,7 +272,15 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
           <div>
             <h1 className="text-3xl font-bold">Kelola Pengguna</h1>
           </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <Dialog
+            open={isCreateDialogOpen}
+            onOpenChange={(open) => {
+              setIsCreateDialogOpen(open)
+              if (!open) {
+                setCreateError(null)
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
@@ -286,9 +341,19 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
                     </SelectContent>
                   </Select>
                 </div>
+                {createError && (
+                  <p className="text-sm text-destructive">{createError}</p>
+                )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} disabled={loading}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsCreateDialogOpen(false)
+                    setCreateError(null)
+                  }}
+                  disabled={loading}
+                >
                   Batal
                 </Button>
                 <Button onClick={handleCreate} disabled={loading}>

@@ -33,6 +33,8 @@ interface AdminStats {
   average_resolution_hours: number
   performance_score: number
   resolution_rate: number
+  resolved_last_two_days: number
+  average_resolved_per_day: number
 }
 
 export default function AdminITRankingAdmin() {
@@ -87,10 +89,19 @@ export default function AdminITRankingAdmin() {
     return 'bg-red-100 text-red-800'
   }
 
-  const getActivityLevel = (thisMonth: number) => {
-    if (thisMonth >= 50) return { label: 'Sangat Aktif', color: 'bg-green-100 text-green-800' }
-    if (thisMonth >= 30) return { label: 'Aktif', color: 'bg-blue-100 text-blue-800' }
-    if (thisMonth >= 10) return { label: 'Cukup Aktif', color: 'bg-yellow-100 text-yellow-800' }
+  const getActivityLevel = (
+    resolvedLastTwoDays: number,
+    averageResolvedPerDay: number
+  ) => {
+    if (resolvedLastTwoDays === 0) {
+      return { label: 'Kurang Aktif', color: 'bg-gray-100 text-gray-800' }
+    }
+    if (averageResolvedPerDay >= 3) {
+      return { label: 'Sangat Aktif', color: 'bg-green-100 text-green-800' }
+    }
+    if (averageResolvedPerDay >= 1) {
+      return { label: 'Aktif', color: 'bg-blue-100 text-blue-800' }
+    }
     return { label: 'Kurang Aktif', color: 'bg-gray-100 text-gray-800' }
   }
 
@@ -127,7 +138,10 @@ export default function AdminITRankingAdmin() {
         {sortedStats.length > 0 && (
           <div className="grid gap-4 md:grid-cols-3">
             {sortedStats.slice(0, 3).map((admin, idx) => {
-              const activity = getActivityLevel(admin.this_month)
+              const activity = getActivityLevel(
+                admin.resolved_last_two_days,
+                admin.average_resolved_per_day
+              )
               return (
                 <Card
                   key={admin.id}
@@ -271,7 +285,10 @@ export default function AdminITRankingAdmin() {
                 </TableHeader>
                 <TableBody>
                   {sortedStats.map((admin, idx) => {
-                    const activity = getActivityLevel(admin.this_month)
+                    const activity = getActivityLevel(
+                      admin.resolved_last_two_days,
+                      admin.average_resolved_per_day
+                    )
                     return (
                       <TableRow key={admin.id}>
                         <TableCell>
@@ -293,9 +310,10 @@ export default function AdminITRankingAdmin() {
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge className={activity.color}>
-                            {admin.this_month}
-                          </Badge>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="font-medium">{admin.this_month}</span>
+                            <Badge className={activity.color}>{activity.label}</Badge>
+                          </div>
                         </TableCell>
                         <TableCell className="text-center font-medium">
                           {admin.total_tickets}
@@ -342,27 +360,19 @@ export default function AdminITRankingAdmin() {
             <CardTitle className="text-base">Kategori Aktivitas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-1">
               <div className="flex items-start gap-3">
                 <Badge className="bg-green-100 text-green-800 mt-1">
                   Sangat Aktif
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  ≥ 50 tiket ditangani dalam sebulan
+                  Minimal 3 tiket selesai per hari (rata-rata 2 hari terakhir)
                 </span>
               </div>
               <div className="flex items-start gap-3">
                 <Badge className="bg-blue-100 text-blue-800 mt-1">Aktif</Badge>
                 <span className="text-sm text-muted-foreground">
-                  30-49 tiket ditangani dalam sebulan
-                </span>
-              </div>
-              <div className="flex items-start gap-3">
-                <Badge className="bg-yellow-100 text-yellow-800 mt-1">
-                  Cukup Aktif
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  10-29 tiket ditangani dalam sebulan
+                  Minimal 1 tiket selesai per hari (rata-rata 2 hari terakhir)
                 </span>
               </div>
               <div className="flex items-start gap-3">
@@ -370,7 +380,8 @@ export default function AdminITRankingAdmin() {
                   Kurang Aktif
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  &lt; 10 tiket ditangani dalam sebulan
+                  Tidak ada tiket selesai dalam 2 hari terakhir atau rata-rata
+                  kurang dari 1 tiket per hari
                 </span>
               </div>
             </div>

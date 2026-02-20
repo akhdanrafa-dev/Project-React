@@ -498,8 +498,9 @@ class BugTicketController extends Controller
     public function getAdminActivityStats()
     {
         $admins = \App\Models\User::where('role', 'admin_it')->get();
+        $lastTwoDaysStart = now()->subDays(2);
         
-        $stats = $admins->map(function ($admin) {
+        $stats = $admins->map(function ($admin) use ($lastTwoDaysStart) {
             $totalTickets = BugTicket::where('assigned_to', $admin->id)->count();
             $resolved = BugTicket::where('assigned_to', $admin->id)
                 ->whereIn('status', ['resolved', 'closed'])
@@ -524,6 +525,12 @@ class BugTicketController extends Controller
             
             $avgResolution = $this->calculateAverageResolutionTime($admin->id);
             $performanceScore = $this->calculatePerformanceScore($admin->id, $resolved, $totalTickets, $avgResolution);
+            $resolvedLastTwoDays = BugTicket::where('assigned_to', $admin->id)
+                ->whereIn('status', ['resolved', 'closed'])
+                ->whereNotNull('resolved_at')
+                ->where('resolved_at', '>=', $lastTwoDaysStart)
+                ->count();
+            $averageResolvedPerDay = round($resolvedLastTwoDays / 2, 2);
             
             return [
                 'id' => $admin->id,
@@ -538,6 +545,8 @@ class BugTicketController extends Controller
                 'average_resolution_hours' => $avgResolution,
                 'performance_score' => $performanceScore,
                 'resolution_rate' => $totalTickets > 0 ? round(($resolved / $totalTickets) * 100, 2) : 0,
+                'resolved_last_two_days' => $resolvedLastTwoDays,
+                'average_resolved_per_day' => $averageResolvedPerDay,
                 'created_at' => $admin->created_at,
                 'updated_at' => $admin->updated_at,
             ];
