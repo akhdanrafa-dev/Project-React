@@ -43,6 +43,10 @@ interface Ticket {
     id: number
     name: string
   } | null
+  assigned_admin?: {
+    id: number
+    name: string
+  } | null
   user: {
     id: number
     name: string
@@ -254,6 +258,11 @@ export default function AdminITChat({ ticketId }: Props) {
     )
   }
 
+  const assignedAdminName =
+    ticket.assignedAdmin?.name ??
+    ticket.assigned_admin?.name ??
+    (ticket.assigned_to === currentUserId ? auth.user?.name ?? null : null)
+
   return (
     <AdminITLayout>
       <div className="space-y-4 p-4 md:p-6">
@@ -414,8 +423,10 @@ export default function AdminITChat({ ticketId }: Props) {
                 <CardTitle className="text-base">Handle By</CardTitle>
               </CardHeader>
               <CardContent>
-                {ticket.assignedAdmin ? (
-                  <p className="text-sm font-medium text-green-600">{ticket.assignedAdmin.name}</p>
+                {assignedAdminName ? (
+                  <p className="text-sm font-medium text-green-600">
+                    {`Sudah di handle oleh (${assignedAdminName})`}
+                  </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">Belum di-handle</p>
                 )}
