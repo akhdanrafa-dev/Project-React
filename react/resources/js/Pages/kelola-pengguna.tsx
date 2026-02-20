@@ -42,6 +42,7 @@ interface User {
   username: string
   email: string
   role: string
+  password?: string
 }
 
 interface Props {
@@ -61,6 +62,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
     username: "",
     email: "",
     role: "",
+    password: "",
   })
 
   const filteredUsers = users.filter(u => 
@@ -89,7 +91,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
         body: JSON.stringify({
           name: formData.username,
           email: formData.email,
-          password: 'password123', // Default password
+          password: formData.password,
           role: formData.role,
         }),
       })
@@ -109,6 +111,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
         username: "",
         email: "",
         role: "",
+        password: "",
       })
     }
   }
@@ -131,6 +134,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
           name: formData.username,
           email: formData.email,
           role: formData.role,
+          ...(formData.password ? { password: formData.password } : {}),
         }),
       })
 
@@ -150,6 +154,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
         username: "",
         email: "",
         role: "",
+        password: "",
       })
     }
   }
@@ -187,7 +192,7 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
 
   const openEditDialog = (user: User) => {
     setSelectedUser(user)
-    setFormData(user)
+    setFormData({ ...user, password: "" })
     setIsEditDialogOpen(true)
   }
 
@@ -252,6 +257,16 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="Masukkan email"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password || ""}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Masukkan password"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -382,6 +397,16 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-password">Password Baru</Label>
+              <Input
+                id="edit-password"
+                type="password"
+                value={formData.password || ""}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Kosongkan jika tidak diubah"
               />
             </div>
             <div className="grid gap-2">
