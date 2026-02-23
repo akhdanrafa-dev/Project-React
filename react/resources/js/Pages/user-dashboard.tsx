@@ -9,10 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import { useCart } from "@/layouts/app/context/CartContext"
+import { useCatalog } from "@/layouts/app/context/CatalogContext"
 import RootLayout from "@/layouts/app/RootLayouts"
 
 function UserDashboardContent() {
   const { items } = useCart()
+  const { products } = useCatalog()
 
   return (
     <>
@@ -41,7 +43,7 @@ function UserDashboardContent() {
               <ShoppingBag className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">5 Produk</div>
+              <div className="text-2xl font-bold">{products.length} Produk</div>
               <p className="text-xs text-muted-foreground">
                 Produk elektronik tersedia
               </p>
