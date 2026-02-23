@@ -1,7 +1,17 @@
 import { Head } from '@inertiajs/react'
-import { Search, Edit2, Eye, Plus } from "lucide-react"
+import { Search, Edit2, Eye, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -28,6 +38,24 @@ const breadcrumbs: BreadcrumbItemData[] = [
     },
 ];
 
+const SKU_PREFIX = 'PRD-'
+const SKU_PADDING = 4
+const SKU_PATTERN = /^PRD-(\d+)$/i
+
+const getNextSku = (products: CatalogProduct[]) => {
+  const highestSkuNumber = products.reduce((highest, product) => {
+    const matchedNumber = product.sku.trim().match(SKU_PATTERN)?.[1]
+    if (!matchedNumber) return highest
+
+    const parsedNumber = Number(matchedNumber)
+    if (!Number.isFinite(parsedNumber)) return highest
+
+    return Math.max(highest, parsedNumber)
+  }, 0)
+
+  return `${SKU_PREFIX}${String(highestSkuNumber + 1).padStart(SKU_PADDING, '0')}`
+}
+
 export default function StaffKelolaProduk() {
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -44,26 +72,31 @@ export default function StaffKelolaProduk() {
 }
 
 function StaffKelolaProdukContent() {
-  const { products, categories, addProduct, updateProduct } = useCatalog()
+  const { products, categories, addProduct, updateProduct, removeProduct } = useCatalog()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null)
   const [selectedStockFilter, setSelectedStockFilter] = useState<'banyak' | 'cukup' | 'sedikit' | 'habis' | null>(null)
+  const getDefaultNewProduct = () => ({
+    name: '',
+    sku: getNextSku(products),
+    category: '',
+    price: '',
+    stock: '',
+    image: '',
+  })
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<CatalogProduct | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [isDeleteSubmitting, setIsDeleteSubmitting] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [isEditSubmitting, setIsEditSubmitting] = useState(false)
-  const [newProduct, setNewProduct] = useState(() => ({
-    name: '',
-    sku: '',
-    category: '',
-    price: '',
-    stock: '',
-    image: '',
-  }))
+  const [newProduct, setNewProduct] = useState(() => getDefaultNewProduct())
   const [editProduct, setEditProduct] = useState(() => ({
     name: '',
     sku: '',
@@ -87,14 +120,7 @@ function StaffKelolaProdukContent() {
   }
 
   const resetNewProduct = () => {
-    setNewProduct({
-      name: '',
-      sku: '',
-      category: '',
-      price: '',
-      stock: '',
-      image: '',
-    })
+    setNewProduct(getDefaultNewProduct())
   }
 
   const resetEditProduct = () => {
@@ -189,6 +215,12 @@ function StaffKelolaProdukContent() {
     setIsEditDialogOpen(true)
   }
 
+  const openDeleteDialog = (product: CatalogProduct) => {
+    setDeleteTarget(product)
+    setDeleteError(null)
+    setIsDeleteDialogOpen(true)
+  }
+
   const handleUpdateProduct = async () => {
     if (!selectedProduct) return
 
@@ -259,6 +291,32 @@ function StaffKelolaProdukContent() {
       setEditError(error instanceof Error ? error.message : 'Terjadi kesalahan saat memperbarui produk.')
     } finally {
       setIsEditSubmitting(false)
+    }
+  }
+
+  const handleDeleteProduct = async () => {
+    if (!deleteTarget) return
+
+    setDeleteError(null)
+    setIsDeleteSubmitting(true)
+
+    try {
+      await removeProduct(deleteTarget.id)
+
+      if (selectedProduct?.id === deleteTarget.id) {
+        setSelectedProduct(null)
+        setIsViewDialogOpen(false)
+        setIsEditDialogOpen(false)
+        resetEditProduct()
+      }
+
+      setIsDeleteDialogOpen(false)
+      setDeleteTarget(null)
+    } catch (error) {
+      console.error('Error deleting product:', error)
+      setDeleteError(error instanceof Error ? error.message : 'Terjadi kesalahan saat menghapus produk.')
+    } finally {
+      setIsDeleteSubmitting(false)
     }
   }
 
@@ -373,10 +431,8 @@ function StaffKelolaProdukContent() {
             open={isCreateDialogOpen}
             onOpenChange={(open) => {
               setIsCreateDialogOpen(open)
-              if (!open) {
-                setFormError(null)
-                resetNewProduct()
-              }
+              setFormError(null)
+              resetNewProduct()
             }}
           >
             <DialogTrigger asChild>
@@ -525,24 +581,35 @@ function StaffKelolaProdukContent() {
                   Stok: {product.stock} unit
                 </p>
 
-                <div className="flex gap-2">
+                <div className="rounded-md border border-border/60 p-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-full min-w-0 px-2 text-xs"
+                      onClick={() => openViewDialog(product)}
+                    >
+                      <Eye className="mr-1 h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">Lihat</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-full min-w-0 px-2 text-xs"
+                      onClick={() => openEditDialog(product)}
+                    >
+                      <Edit2 className="mr-1 h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">Edit</span>
+                    </Button>
+                  </div>
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     size="sm"
-                    className="flex-1"
-                    onClick={() => openViewDialog(product)}
+                    className="mt-2 h-8 w-full min-w-0 px-2 text-xs"
+                    onClick={() => openDeleteDialog(product)}
                   >
-                    <Eye className="h-4 w-4 mr-2" />
-                    Lihat
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => openEditDialog(product)}
-                  >
-                    <Edit2 className="h-4 w-4 mr-2" />
-                    Edit
+                    <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">Hapus</span>
                   </Button>
                 </div>
               </CardContent>
@@ -747,6 +814,48 @@ function StaffKelolaProdukContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setIsDeleteDialogOpen(open)
+          if (!open && !isDeleteSubmitting) {
+            setDeleteError(null)
+            setDeleteTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Produk</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `Produk "${deleteTarget.name}" akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.`
+                : 'Produk akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {deleteError}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleteSubmitting}>
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleteSubmitting || !deleteTarget}
+              onClick={(event) => {
+                event.preventDefault()
+                void handleDeleteProduct()
+              }}
+            >
+              {isDeleteSubmitting ? 'Menghapus...' : 'Hapus Produk'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

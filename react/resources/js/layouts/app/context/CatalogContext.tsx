@@ -25,7 +25,7 @@ type CatalogContextType = {
     id: number,
     updates: Partial<CatalogProduct>
   ) => Promise<void>
-  removeProduct: (id: number) => void
+  removeProduct: (id: number) => Promise<void>
   adjustStock: (id: number, delta: number) => void
   setStock: (id: number, stock: number) => void
   getProduct: (id: number) => CatalogProduct | undefined
@@ -72,14 +72,86 @@ type ApiCatalogProduct = {
 
 const createSku = (id: number) => `PRD-${String(id).padStart(4, "0")}`
 
+const getCookieValue = (name: string) => {
+  if (typeof document === "undefined") return ""
+
+  const encodedName = encodeURIComponent(name)
+  const row = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith(`${encodedName}=`))
+
+  if (!row) return ""
+
+  const value = row.slice(encodedName.length + 1)
+
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+const setCsrfMetaToken = (token: string) => {
+  if (typeof document === "undefined") return
+
+  const normalizedToken = token.trim()
+  if (!normalizedToken) return
+
+  const metaTag = document.querySelector(
+    'meta[name="csrf-token"]'
+  )
+
+  if (metaTag) {
+    metaTag.setAttribute("content", normalizedToken)
+  }
+}
+
 const getCsrfToken = () => {
   if (typeof document === "undefined") return ""
 
-  return (
+  const tokenFromMeta =
     document
       .querySelector('meta[name="csrf-token"]')
-      ?.getAttribute("content") ?? ""
-  )
+      ?.getAttribute("content")
+      ?.trim() ?? ""
+
+  if (tokenFromMeta) return tokenFromMeta
+
+  // Fallback only when meta token is unavailable.
+  // In this app, XSRF-TOKEN cookie can be encrypted.
+  return getCookieValue("XSRF-TOKEN").trim()
+}
+
+const syncCsrfMetaFromResponse = (response: Response) => {
+  const tokenFromHeader =
+    response.headers.get("X-CSRF-Token") ??
+    response.headers.get("x-csrf-token") ??
+    ""
+
+  setCsrfMetaToken(tokenFromHeader)
+}
+
+const ensureFreshCsrfToken = async () => {
+  if (typeof window === "undefined") return getCsrfToken()
+
+  try {
+    const response = await fetch("/sanctum/csrf-cookie", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    })
+
+    syncCsrfMetaFromResponse(response)
+  } catch (error) {
+    console.error("Failed to refresh CSRF cookie:", error)
+  }
+
+  const csrfToken = getCsrfToken()
+  setCsrfMetaToken(csrfToken)
+  return csrfToken
 }
 
 function buildFallback(id: number): CatalogProduct {
@@ -374,7 +446,8 @@ export function CatalogProvider({
   }, [])
 
   async function addProduct(product: CatalogProductInput) {
-    const requestBody = {
+    const csrfToken = await ensureFreshCsrfToken()
+    const requestBody: Record<string, unknown> = {
       name: product.name.trim(),
       sku: product.sku?.trim() || "",
       category: product.category,
@@ -389,6 +462,10 @@ export function CatalogProvider({
       image: product.image.trim(),
     }
 
+    if (csrfToken) {
+      requestBody._token = csrfToken
+    }
+
     const response = await fetch("/kelola-produk", {
       method: "POST",
       credentials: "same-origin",
@@ -396,10 +473,17 @@ export function CatalogProvider({
         "Content-Type": "application/json",
         Accept: "application/json",
         "X-Requested-With": "XMLHttpRequest",
-        "X-CSRF-Token": getCsrfToken(),
+        ...(csrfToken
+          ? {
+              "X-CSRF-TOKEN": csrfToken,
+              "X-XSRF-TOKEN": csrfToken,
+            }
+          : {}),
       },
       body: JSON.stringify(requestBody),
     })
+
+    syncCsrfMetaFromResponse(response)
 
     const contentType =
       response.headers.get("content-type") ?? ""
@@ -503,7 +587,12 @@ export function CatalogProvider({
     id: number,
     updates: Partial<CatalogProduct>
   ) {
-    const requestBody: Partial<CatalogProduct> = {}
+    const csrfToken = await ensureFreshCsrfToken()
+    const requestBody: Record<string, unknown> = {}
+
+    if (csrfToken) {
+      requestBody._token = csrfToken
+    }
 
     if (typeof updates.name === "string") {
       requestBody.name = updates.name.trim()
@@ -546,10 +635,17 @@ export function CatalogProvider({
         "Content-Type": "application/json",
         Accept: "application/json",
         "X-Requested-With": "XMLHttpRequest",
-        "X-CSRF-Token": getCsrfToken(),
+        ...(csrfToken
+          ? {
+              "X-CSRF-TOKEN": csrfToken,
+              "X-XSRF-TOKEN": csrfToken,
+            }
+          : {}),
       },
       body: JSON.stringify(requestBody),
     })
+
+    syncCsrfMetaFromResponse(response)
 
     const contentType =
       response.headers.get("content-type") ?? ""
@@ -635,7 +731,48 @@ export function CatalogProvider({
     )
   }
 
-  function removeProduct(id: number) {
+  async function removeProduct(id: number) {
+    const csrfToken = await ensureFreshCsrfToken()
+    const response = await fetch(`/kelola-produk/${id}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        ...(csrfToken
+          ? {
+              "X-CSRF-TOKEN": csrfToken,
+              "X-XSRF-TOKEN": csrfToken,
+            }
+          : {}),
+      },
+    })
+
+    syncCsrfMetaFromResponse(response)
+
+    const contentType =
+      response.headers.get("content-type") ?? ""
+    const responsePayload: unknown =
+      contentType.includes("application/json")
+        ? await response.json()
+        : { message: await response.text() }
+
+    if (!response.ok) {
+      const message =
+        typeof responsePayload === "object" &&
+        responsePayload !== null &&
+        "message" in responsePayload &&
+        typeof (
+          responsePayload as { message?: unknown }
+        ).message === "string"
+          ? (
+              responsePayload as { message: string }
+            ).message
+          : `Failed to delete product (status: ${response.status})`
+
+      throw new Error(message)
+    }
+
     setProducts((prev) => prev.filter((item) => item.id !== id))
   }
 

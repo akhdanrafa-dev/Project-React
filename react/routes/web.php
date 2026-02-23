@@ -242,6 +242,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('kelola.produk.update')
         ->middleware('auth');
 
+    Route::delete('/kelola-produk/{id}', [StaffProdukController::class, 'destroy'])
+        ->name('kelola.produk.destroy')
+        ->middleware('auth');
+
     /*
     |--------------------------------------------------------------------------
     | Product Alerts - Developer & Staff

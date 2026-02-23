@@ -253,10 +253,24 @@ class StaffProdukController extends Controller
     /**
      * Remove the specified product
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        // Delete product
-        // Product::find($id)->delete();
+        $user = $request->user();
+
+        if (!$user || !in_array($user->role, ['staff', 'developer'], true)) {
+            abort(403, 'Access denied. Only staff and developer can delete products.');
+        }
+
+        $product = Product::findOrFail($id);
+        $productId = (int) $product->id;
+        $product->delete();
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Produk berhasil dihapus',
+                'product_id' => $productId,
+            ]);
+        }
 
         return redirect()->route('kelola.produk')
             ->with('message', 'Produk berhasil dihapus');
