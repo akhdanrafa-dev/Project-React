@@ -66,6 +66,9 @@ const normalizeTicket = (ticket: ApiBugTicket): BugTicket => ({
   assignedAdmin: ticket.assignedAdmin ?? ticket.assigned_admin ?? null,
 })
 
+const isHandledByAdmin = (ticket: BugTicket) =>
+  Boolean(ticket.assignedAdmin?.id || ticket.assignedAdmin?.name)
+
 export default function DeveloperToolsPage() {
   return (
     <RootLayout hideFloatingChat>
@@ -186,6 +189,17 @@ function DeveloperToolsContent() {
   }
 
   const updateDifficulty = async (ticketId: number, difficulty: string) => {
+    const selectedTicket = tickets.find((ticket) => ticket.id === ticketId)
+    if (selectedTicket && isHandledByAdmin(selectedTicket)) {
+      toast({
+        title: "Tidak Diizinkan",
+        description:
+          "Tingkat kesulitan tidak dapat diubah karena laporan sudah di-handle admin IT",
+        variant: "destructive",
+      })
+      return
+    }
+
     setUpdatingTicketId(ticketId)
 
     try {
@@ -342,20 +356,34 @@ function DeveloperToolsContent() {
                           </TableCell>
                           <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
                           <TableCell>
-                            <select
-                              value={ticket.difficulty_level || ""}
-                              onChange={(e) => updateDifficulty(ticket.id, e.target.value)}
-                              disabled={updatingTicketId === ticket.id}
-                              className="text-xs px-2 py-1 border rounded bg-white dark:bg-gray-800 text-black dark:text-white cursor-pointer disabled:opacity-50"
-                              aria-label="Ubah tingkat kesulitan"
+                            <div
+                              title={
+                                isHandledByAdmin(ticket)
+                                  ? "Tidak bisa diubah saat sudah di handle!"
+                                  : "Ubah tingkat kesulitan"
+                              }
+                              className="inline-block"
                             >
-                              <option value="">-</option>
-                              {DIFFICULTY_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                              <select
+                                value={ticket.difficulty_level || ""}
+                                onChange={(e) => updateDifficulty(ticket.id, e.target.value)}
+                                disabled={updatingTicketId === ticket.id || isHandledByAdmin(ticket)}
+                                className="text-xs px-2 py-1 border rounded bg-white dark:bg-gray-800 text-black dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                aria-label="Ubah tingkat kesulitan"
+                                title={
+                                  isHandledByAdmin(ticket)
+                                    ? "Tidak bisa diubah saat sudah di handle!"
+                                    : "Ubah tingkat kesulitan"
+                                }
+                              >
+                                <option value="">-</option>
+                                {DIFFICULTY_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </TableCell>
                           <TableCell>{getStatusBadge(ticket.status)}</TableCell>
                           <TableCell>
