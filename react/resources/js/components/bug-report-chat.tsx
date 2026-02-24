@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -73,6 +72,8 @@ export function BugReportChat({
   const [showAppealForm, setShowAppealForm] = useState(false)
   const [submittingAppeal, setSubmittingAppeal] = useState(false)
   const [markingAsResolved, setMarkingAsResolved] = useState(false)
+  const [reopeningForUpdate, setReopeningForUpdate] = useState(false)
+  const [localStatus, setLocalStatus] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
@@ -93,6 +94,10 @@ export function BugReportChat({
       fetchMessages()
     }
   }, [open, ticket])
+
+  useEffect(() => {
+    setLocalStatus(ticket?.status ?? "")
+  }, [ticket?.id, ticket?.status])
 
   const fetchMessages = async () => {
     if (!ticket) return
@@ -119,7 +124,7 @@ export function BugReportChat({
         },
         credentials: "same-origin",
       })
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Gagal mengambil pesan",
@@ -154,7 +159,7 @@ export function BugReportChat({
       const data = await response.json()
       setMessages([...messages, data])
       setNewMessage("")
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Gagal mengirim pesan",
@@ -313,6 +318,7 @@ export function BugReportChat({
         description: "Tiket telah diubah kembali ke status Terselesaikan.",
       })
 
+      setLocalStatus("resolved")
       onOpenChange(false)
     } catch (error) {
       toast({
@@ -325,13 +331,54 @@ export function BugReportChat({
     }
   }
 
+  const handleUpdateSolutionAndChat = async () => {
+    if (!ticket) return
+
+    setReopeningForUpdate(true)
+
+    try {
+      const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
+
+      const response = await fetch(`/api/bug-tickets/${ticket.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken || "",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          status: "in_progress",
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: "Gagal memperbarui tiket" }))
+        throw new Error(error.message || "Gagal memperbarui tiket")
+      }
+
+      setLocalStatus("in_progress")
+      toast({
+        title: "Sukses",
+        description: "Status tiket diubah ke Dalam Proses. Anda dapat memperbarui solusi melalui chat.",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      })
+    } finally {
+      setReopeningForUpdate(false)
+    }
+  }
+
   if (!ticket) return null
+  const status = localStatus || ticket.status
 
   const isAdminIT = currentUserRole === "admin_it"
   const isTicketOwner = ticket.user_id === currentUserId
 
   const getStatusColor = (status: string) => {
-    const baseStatus = status.split(" ")[0]
     switch (status) {
       case "open":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
@@ -418,8 +465,8 @@ export function BugReportChat({
                   ? "Prioritas: Sedang"
                   : "Prioritas: Tinggi"}
             </Badge>
-            <Badge className={getStatusColor(ticket.status)}>
-              {getStatusLabel(ticket.status)}
+            <Badge className={getStatusColor(status)}>
+              {getStatusLabel(status)}
             </Badge>
           </div>
         </DialogHeader>
@@ -488,11 +535,11 @@ export function BugReportChat({
 
           {/* Message Input & Appeal Section */}
           <div className="border-t p-4 space-y-3">
-            {ticket.status === "closed" ? (
+            {status === "closed" ? (
               <div className="p-3 bg-gray-100 rounded-lg text-center text-sm text-gray-600">
                 Chat telah ditutup karena tiket ini sudah ditutup.
               </div>
-            ) : ticket.status === "diproses kembali" ? (
+            ) : status === "diproses kembali" ? (
               isAdminIT ? (
                 <div className="space-y-3 p-4 border rounded-lg bg-blue-50 border-blue-200">
                   <p className="text-sm font-medium text-blue-900">Status: Diproses Kembali</p>
@@ -502,7 +549,7 @@ export function BugReportChat({
                   <div className="flex gap-2 flex-wrap">
                     <Button
                       onClick={handleMarkAsResolved}
-                      disabled={markingAsResolved}
+                      disabled={markingAsResolved || reopeningForUpdate}
                       size="sm"
                       className="bg-green-600 hover:bg-green-700 text-white"
                     >
@@ -510,11 +557,13 @@ export function BugReportChat({
                       Tetap Resolved
                     </Button>
                     <Button
+                      onClick={handleUpdateSolutionAndChat}
                       variant="outline"
                       size="sm"
-                      disabled={markingAsResolved}
+                      disabled={markingAsResolved || reopeningForUpdate}
                       className="text-blue-600 border-blue-200"
                     >
+                      {reopeningForUpdate ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}
                       Perbaharui Solusi & Chat
                     </Button>
                   </div>
@@ -526,7 +575,7 @@ export function BugReportChat({
                   </AlertDescription>
                 </Alert>
               )
-            ) : ticket.status?.toLowerCase() === "resolved" && !showAppealForm && isTicketOwner ? (
+            ) : status?.toLowerCase() === "resolved" && !showAppealForm && isTicketOwner ? (
               <>
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-gray-700">Apakah Anda puas dengan solusi ini?</p>
@@ -567,7 +616,7 @@ export function BugReportChat({
               </>
             ) : (
               <>
-                {showAppealForm && ticket.status?.toLowerCase() === "resolved" && isTicketOwner ? (
+                {showAppealForm && status?.toLowerCase() === "resolved" && isTicketOwner ? (
                   <form onSubmit={handleSubmitAppeal} className="space-y-3">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Alasan Aju Banding *</label>
