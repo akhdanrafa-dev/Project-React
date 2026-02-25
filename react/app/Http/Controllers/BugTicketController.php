@@ -35,7 +35,7 @@ class BugTicketController extends Controller
                         // Or tickets assigned to this admin
                         ->orWhere('assigned_to', $user->id)
                         // Or tickets where this admin is a collaborator
-                        ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$user->id]);
+                        ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($user->id)]);
                 })
                 ->oldest()
                 ->get();
@@ -332,14 +332,18 @@ class BugTicketController extends Controller
         $completedStatuses = ['resolved', 'closed'];
 
         // Helper function to get tickets assigned to or collaborated by admin
+        // Using JSON_CONTAINS for proper JSON array comparison in MySQL
         $getAdminTicketsQuery = function ($baseQuery) use ($adminId) {
             return $baseQuery->where(function ($query) use ($adminId) {
                 $query->where('assigned_to', $adminId)
-                    ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$adminId]);
+                    // Fix: Use JSON_CONTAINS for proper JSON array comparison in MySQL
+                    ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)]);
             });
         };
 
-        // Helper to count tickets by period (using resolved_at for completed, taken_at for others)
+        // Helper to count tickets by period 
+        // For assigned admin: use taken_at
+        // For collaborator: use created_at (when they started collaborating)
         $countByPeriod = function ($period) use ($adminId, $today, $thisWeek, $thisMonth, $thisYear) {
             $dateFilter = match($period) {
                 'today' => $today,
@@ -348,23 +352,39 @@ class BugTicketController extends Controller
                 'year' => $thisYear,
             };
 
-            return BugTicket::where(function ($query) use ($adminId) {
-                $query->where('assigned_to', $adminId)
-                    ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$adminId]);
-            })
-            ->where(function ($query) use ($dateFilter) {
-                // For completed tickets, use resolved_at
-                $query->where(function ($q) use ($dateFilter) {
-                    $q->whereIn('status', ['resolved', 'closed'])
-                        ->whereDate('resolved_at', '>=', $dateFilter);
+            // Count tickets where admin is the owner (assigned_to)
+            $ownedTickets = BugTicket::where('assigned_to', $adminId)
+                ->where(function ($query) use ($dateFilter) {
+                    // For completed tickets, use resolved_at
+                    $query->where(function ($q) use ($dateFilter) {
+                        $q->whereIn('status', ['resolved', 'closed'])
+                            ->whereDate('resolved_at', '>=', $dateFilter);
+                    })
+                    // For non-completed tickets, use taken_at
+                    ->orWhere(function ($q) use ($dateFilter) {
+                        $q->whereNotIn('status', ['resolved', 'closed'])
+                            ->whereDate('taken_at', '>=', $dateFilter);
+                    });
                 })
-                // For non-completed tickets, use taken_at
-                ->orWhere(function ($q) use ($dateFilter) {
-                    $q->whereNotIn('status', ['resolved', 'closed'])
-                        ->whereDate('taken_at', '>=', $dateFilter);
-                });
-            })
-            ->count();
+                ->count();
+
+            // Count tickets where admin is a collaborator
+            $collaboratedTickets = BugTicket::whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
+                ->where(function ($query) use ($dateFilter) {
+                    // For completed tickets, use resolved_at
+                    $query->where(function ($q) use ($dateFilter) {
+                        $q->whereIn('status', ['resolved', 'closed'])
+                            ->whereDate('resolved_at', '>=', $dateFilter);
+                    })
+                    // For non-completed tickets, use created_at (when ticket was created)
+                    ->orWhere(function ($q) use ($dateFilter) {
+                        $q->whereNotIn('status', ['resolved', 'closed'])
+                            ->whereDate('created_at', '>=', $dateFilter);
+                    });
+                })
+                ->count();
+
+            return $ownedTickets + $collaboratedTickets;
         };
 
         // Build base query for all tickets (assigned or collaborated)
@@ -390,6 +410,19 @@ class BugTicketController extends Controller
                 ->count(),
         ];
 
+        // Count collaboration where this admin is a collaborator
+        // Count collaboration: 
+        // 1. Tickets where admin is the owner AND has collaborators (admin utama yang mengundang kolaborator)
+        // 2. Tickets where admin is a collaborator (admin yang diajak kolaborasi)
+        $collaborationAsOwner = BugTicket::where('assigned_to', $adminId)
+            ->where('collaboration_type', 'collab')
+            ->count();
+            
+        $collaborationAsCollaborator = BugTicket::whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
+            ->count();
+            
+        $collaborationCount = $collaborationAsOwner + $collaborationAsCollaborator;
+
         $stats = [
             'total_handled' => (clone $allTicketsQuery)->count(),
             'today' => $countByPeriod('today'),
@@ -403,9 +436,7 @@ class BugTicketController extends Controller
             'average_resolution_time' => $this->calculateAverageResolutionTime($adminId),
             'difficulty_breakdown' => $difficultyBreakdown,
             'difficulty_total' => array_sum($difficultyBreakdown),
-            'collaboration_count' => (clone $allTicketsQuery)
-                ->where('collaboration_type', 'collab')
-                ->count(),
+            'collaboration_count' => $collaborationCount,
         ];
 
         return response()->json($stats);
@@ -415,7 +446,7 @@ class BugTicketController extends Controller
     {
         $resolvedTickets = BugTicket::where(function ($query) use ($adminId) {
                 $query->where('assigned_to', $adminId)
-                    ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$adminId]);
+                    ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)]);
             })
             ->whereNotNull('taken_at')
             ->whereNotNull('resolved_at')
@@ -440,7 +471,7 @@ class BugTicketController extends Controller
             // Query for tickets assigned or collaborated
             $baseTicketQuery = BugTicket::where(function ($query) use ($admin) {
                 $query->where('assigned_to', $admin->id)
-                    ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$admin->id]);
+                    ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($admin->id)]);
             });
 
             $resolved = (clone $baseTicketQuery)
@@ -448,6 +479,16 @@ class BugTicketController extends Controller
                 ->count();
             $total = (clone $baseTicketQuery)->count();
             $avgResolution = $this->calculateAverageResolutionTime($admin->id);
+
+            // Count collaboration: 
+            // 1. Tickets where admin is the owner AND has collaborators (admin utama yang mengundang kolaborator)
+            // 2. Tickets where admin is a collaborator (admin yang diajak kolaborasi)
+            $collaborationAsOwner = BugTicket::where('assigned_to', $admin->id)
+                ->where('collaboration_type', 'collab')
+                ->count();
+                
+            $collaborationAsCollaborator = BugTicket::whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($admin->id)])
+                ->count();
 
             return [
                 'id' => $admin->id,
@@ -460,6 +501,7 @@ class BugTicketController extends Controller
                     ->count(),
                 'average_resolution_hours' => $avgResolution,
                 'performance_score' => $this->calculatePerformanceScore($admin->id, $resolved, $total, $avgResolution),
+                'collaboration_count' => $collaborationAsOwner + $collaborationAsCollaborator,
             ];
         })->sortByDesc('performance_score')->values();
 
@@ -624,7 +666,7 @@ class BugTicketController extends Controller
             $baseTicketQuery = function () use ($admin) {
                 return BugTicket::where(function ($query) use ($admin) {
                     $query->where('assigned_to', $admin->id)
-                        ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$admin->id]);
+                        ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($admin->id)]);
                 });
             };
 

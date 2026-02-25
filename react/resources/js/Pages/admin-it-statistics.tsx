@@ -35,7 +35,9 @@ interface AdminStats {
     easy: number
     medium: number
     hard: number
+    collab?: number
   }
+  collaboration_count: number
 }
 
 const COLORS = ['#10b981', '#f59e0b', '#ef4444']
@@ -186,6 +188,16 @@ export default function AdminITStatistics() {
             <CardContent>
               <div className="text-2xl font-bold">{stats.average_resolution_time.toFixed(1)}</div>
               <p className="text-xs text-muted-foreground">Jam per tiket</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Kolaborasi</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.collaboration_count}</div>
+              <p className="text-xs text-muted-foreground">Tiket kolaborasi</p>
             </CardContent>
           </Card>
         </div>

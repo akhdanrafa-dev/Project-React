@@ -29,6 +29,7 @@ interface AdminRanking {
   in_progress: number
   average_resolution_hours: number
   performance_score: number
+  collaboration_count?: number
 }
 
 export default function AdminITRankings() {
@@ -155,6 +156,7 @@ export default function AdminITRankings() {
                     <TableHead className="text-right">Total Tiket</TableHead>
                     <TableHead className="text-right">Terselesaikan</TableHead>
                     <TableHead className="text-right">Dalam Proses</TableHead>
+                    <TableHead className="text-right">Kolaborasi</TableHead>
                     <TableHead className="text-right">Rata-rata Waktu</TableHead>
                     <TableHead className="text-right">Skor Performa</TableHead>
                   </TableRow>
@@ -183,6 +185,11 @@ export default function AdminITRankings() {
                       <TableCell className="text-right">
                         <Badge className="bg-yellow-100 text-yellow-800">
                           {admin.in_progress}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge className="bg-purple-100 text-purple-800">
+                          {admin.collaboration_count ?? 0}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right text-sm">
