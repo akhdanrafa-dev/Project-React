@@ -72,10 +72,19 @@ function UserLaporanContent() {
 
   useEffect(() => {
     fetchTickets()
+
+    // Polling untuk update status tiket setiap 5 detik
+    const interval = setInterval(() => {
+      fetchTickets(true) // isPolling=true agar tidak set loading
+    }, 5000)
+
+    return () => clearInterval(interval)
   }, [])
 
-  const fetchTickets = async () => {
-    setLoading(true)
+  const fetchTickets = async (isPolling = false) => {
+    if (!isPolling) {
+      setLoading(true)
+    }
     try {
       const response = await fetch("/api/bug-tickets")
       if (!response.ok) throw new Error("Gagal mengambil ticket")
@@ -84,13 +93,17 @@ function UserLaporanContent() {
       const userTickets = data.filter((ticket: BugTicket) => ticket.user_id === auth.user.id)
       setTickets(userTickets)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Gagal mengambil data ticket",
-        variant: "destructive",
-      })
+      if (!isPolling) {
+        toast({
+          title: "Error",
+          description: "Gagal mengambil data ticket",
+          variant: "destructive",
+        })
+      }
     } finally {
-      setLoading(false)
+      if (!isPolling) {
+        setLoading(false)
+      }
     }
   }
 

@@ -39,6 +39,19 @@ Route::middleware(['auth'])->group(function () {
         );
     });
 
+    Route::get('/admin-it-list', function () {
+        return response()->json(
+            User::where('role', 'admin_it')->get()->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                ];
+            })
+        );
+    });
+
     Route::get('/products', [App\Http\Controllers\StaffProdukController::class, 'apiIndex']);
     Route::get('/staff-developer-chats/recent-messages', [App\Http\Controllers\ChatMessageController::class, 'getRecentMessages']);
 });

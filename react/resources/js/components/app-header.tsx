@@ -81,10 +81,18 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
     useEffect(() => {
         const checkUnreadCount = async () => {
             try {
-                const response = await fetch('/api/bug-tickets/unread-count');
+                const response = await fetch('/api/bug-tickets/unread-count', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
                 if (response.ok) {
-                    const data = await response.json();
-                    setUnreadCount(data.total_unread);
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const data = await response.json();
+                        setUnreadCount(data.total_unread);
+                    }
                 }
             } catch (error) {
                 console.error('Error checking unread count:', error);

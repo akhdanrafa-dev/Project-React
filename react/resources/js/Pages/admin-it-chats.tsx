@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react'
-import { ArrowLeft, CheckCircle2, ImagePlus, MessageSquare, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ImagePlus, MessageSquare, X, Trash2, Users } from 'lucide-react'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,12 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar-trigger'
 import AdminITLayout from '@/layouts/app/AdminITLayout'
 import type { SharedData } from '@/types'
+
+interface AdminUser {
+  id: number
+  name: string
+  email: string
+}
 
 interface ChatMessage {
   id: number
@@ -48,6 +54,8 @@ interface Ticket {
   priority: string
   difficulty_level?: string
   category: string
+  collaboration_type?: string
+  collaborators?: number[] | null
   created_at: string
   assigned_to?: number | null
   assignedAdmin?: {
@@ -96,6 +104,11 @@ export default function AdminITChats() {
   const [sending, setSending] = useState(false)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null)
+  const [adminList, setAdminList] = useState<AdminUser[]>([])
+  const [selectedCollaborator, setSelectedCollaborator] = useState<number | null>(null)
+  const [collaboratorsDetails, setCollaboratorsDetails] = useState<AdminUser[]>([])
+  const [isInvitingCollaborator, setIsInvitingCollaborator] = useState(false)
+  const [showCollaborationModal, setShowCollaborationModal] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const autoScrollRef = useRef(true)
@@ -106,25 +119,28 @@ export default function AdminITChats() {
   useEffect(() => {
     fetchTickets()
     
-    // Polling untuk update detail tiket yang dipilih setiap 5 detik
-    const detailInterval = setInterval(() => {
+    // Fetch admin list saat component mount (pastikan currentUserId 100% defined)
+    if (currentUserId) {
+      fetchAdminList()
+    }
+    
+    // Smart polling: fetch hanya messages baru setiap 3 detik (tanpa reset chat)
+    const messageInterval = setInterval(() => {
       if (selectedTicketId) {
-        fetchTicketDetails(selectedTicketId)
-      } else {
-        fetchTickets(true)
+        fetchOnlyNewMessages(selectedTicketId)
       }
-    }, 5000)
+    }, 3000)
 
-    // Polling untuk update list tiket setiap 30 detik
+    // Full update tiket list setiap 30 detik
     const listInterval = setInterval(() => {
       fetchTickets(true)
     }, 30000)
 
     return () => {
-      clearInterval(detailInterval)
+      clearInterval(messageInterval)
       clearInterval(listInterval)
     }
-  }, [selectedTicketId])
+  }, [currentUserId, selectedTicketId])
 
   useEffect(() => {
     const currentTicketId = selectedTicket?.id ?? null
@@ -166,6 +182,10 @@ export default function AdminITChats() {
     })
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
+    }
+    // Load collaborators details saat ticket berubah
+    if (selectedTicketId) {
+      fetchCollaboratorsDetails(selectedTicketId)
     }
   }, [selectedTicketId])
 
@@ -262,6 +282,78 @@ export default function AdminITChats() {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
     } finally {
       setLoadingTicketDetails(false)
+    }
+  }
+
+  const fetchAdminList = async () => {
+    try {
+      const response = await fetch('/api/admin-it-list', {
+        headers: {
+          Accept: 'application/json',
+        },
+        credentials: 'same-origin',
+      })
+      if (!response.ok) {
+        console.error('Failed to fetch admin list:', response.status)
+        return
+      }
+      const data: AdminUser[] = await response.json()
+      console.log('Admin list fetched:', data)
+      const filtered = data.filter(admin => admin.id !== currentUserId)
+      console.log('Filtered admin list (excluding self):', filtered)
+      setAdminList(filtered)
+    } catch (err) {
+      console.error('Failed to fetch admin list:', err)
+    }
+  }
+
+  const fetchCollaboratorsDetails = async (ticketId: number) => {
+    try {
+      const response = await fetch(`/api/bug-tickets/${ticketId}/collaborators`, {
+        headers: {
+          Accept: 'application/json',
+        },
+        credentials: 'same-origin',
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setCollaboratorsDetails(data.collaborators || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch collaborators:', err)
+    }
+  }
+
+  const fetchOnlyNewMessages = async (ticketId: number) => {
+    try {
+      const response = await fetch(`/api/bug-tickets/${ticketId}/messages`, {
+        headers: {
+          Accept: 'application/json',
+        },
+        credentials: 'same-origin',
+      })
+      if (!response.ok) throw new Error('Gagal mengambil pesan')
+      const newMessages: ChatMessage[] = await response.json()
+
+      // Merge dengan messages yang ada, hindari duplikat
+      setSelectedTicket(prevTicket => {
+        if (!prevTicket) return prevTicket
+
+        const existingIds = new Set(prevTicket.messages.map(m => m.id))
+        const messagesToAdd = newMessages.filter(m => !existingIds.has(m.id))
+
+        // Hanya update jika ada messages baru
+        if (messagesToAdd.length > 0) {
+          return {
+            ...prevTicket,
+            messages: [...prevTicket.messages, ...messagesToAdd],
+          }
+        }
+
+        return prevTicket
+      })
+    } catch (err) {
+      console.error('Failed to fetch new messages:', err)
     }
   }
 
@@ -411,6 +503,81 @@ export default function AdminITChats() {
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
+    }
+  }
+
+  const handleInviteCollaborator = async () => {
+    if (!selectedTicket || !selectedCollaborator) {
+      setError('Pilih admin untuk diajak berkolaborasi')
+      return
+    }
+
+    // Strict check: hanya pemilik yang bisa invite
+    if ((selectedTicket.assigned_to as number) !== currentUserId) {
+      setError('❌ Hanya pemilik tiket yang dapat menambah kolaborator')
+      return
+    }
+
+    setIsInvitingCollaborator(true)
+    try {
+      const response = await fetch(`/api/bug-tickets/${selectedTicket.id}/collaborators/invite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken(),
+          Accept: 'application/json',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({ collaborator_id: selectedCollaborator }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Gagal menambah kolaborator')
+      }
+
+      await fetchTicketDetails(selectedTicket.id)
+      await fetchCollaboratorsDetails(selectedTicket.id)
+      setSelectedCollaborator(null)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menambah kolaborator')
+    } finally {
+      setIsInvitingCollaborator(false)
+    }
+  }
+
+  const handleRemoveCollaborator = async (collaboratorId: number) => {
+    if (!selectedTicket) return
+
+    // Strict check: hanya pemilik yang bisa remove
+    if ((selectedTicket.assigned_to as number) !== currentUserId) {
+      setError('❌ Hanya pemilik tiket yang dapat menghapus kolaborator')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/bug-tickets/${selectedTicket.id}/collaborators/remove`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken(),
+          Accept: 'application/json',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({ collaborator_id: collaboratorId }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Gagal menghapus kolaborator')
+      }
+
+      await fetchTicketDetails(selectedTicket.id)
+      await fetchCollaboratorsDetails(selectedTicket.id)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menghapus kolaborator')
     }
   }
 
@@ -710,8 +877,26 @@ export default function AdminITChats() {
                       Ambil Tiket
                     </Button>
                     )}
-                    {selectedTicket?.status === 'in_progress' && (
-                      <Button size="sm" variant="ghost" type="button" onClick={handleResolveTicket}>
+                    {selectedTicket?.status === 'in_progress' && 
+                     selectedTicket.assigned_to === currentUserId && (
+                      <>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          type="button" 
+                          onClick={() => setShowCollaborationModal(true)}
+                        >
+                          Kolaborasi
+                        </Button>
+                        <Button size="sm" variant="ghost" type="button" onClick={handleResolveTicket}>
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Tandai Terselesaikan
+                        </Button>
+                      </>
+                    )}
+                    {selectedTicket?.status === 'in_progress' && 
+                     selectedTicket.assigned_to !== currentUserId && (
+                      <Button size="sm" variant="ghost" type="button" onClick={handleResolveTicket} disabled title="Hanya pemilik tiket yang dapat menyelesaikan">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Tandai Terselesaikan
                       </Button>
@@ -791,6 +976,122 @@ export default function AdminITChats() {
             </div>
           </Card>
         </div>
+
+        {/* Collaboration Modal */}
+        {showCollaborationModal && selectedTicket && selectedTicket.assigned_to === currentUserId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Kelola Kolaborasi
+                  </CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCollaborationModal(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <CardDescription>
+                  Tiket: {selectedTicket.ticket_number}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {error && (
+                  <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
+                    {error}
+                  </div>
+                )}
+
+                {/* Current Collaborators */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Kolaborator Saat Ini</p>
+                  {collaboratorsDetails.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Belum ada kolaborator</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {collaboratorsDetails.map((collaborator) => (
+                        <div
+                          key={collaborator.id}
+                          className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2"
+                        >
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{collaborator.name}</p>
+                            <p className="text-xs text-muted-foreground">{collaborator.email}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveCollaborator(collaborator.id)}
+                            title="Hapus kolaborator"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add Collaborator */}
+                <div className="space-y-2 border-t pt-4">
+                  <p className="text-sm font-medium">Tambah Kolaborator</p>
+                  {adminList.length === 0 ? (
+                    <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-700">
+                      Tidak ada admin IT lain yang tersedia
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={selectedCollaborator?.toString() || ''}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          console.log('Selected value:', val)
+                          setSelectedCollaborator(val ? Number(val) : null)
+                        }}
+                        className="w-full rounded-md border bg-white px-3 py-2 text-sm text-foreground"
+                      >
+                        <option value="">-- Pilih admin IT --</option>
+                        {adminList.map((admin) => {
+                          const isAlreadyCollaborator = collaboratorsDetails.some((c) => c.id === admin.id)
+                          return (
+                            <option
+                              key={admin.id}
+                              value={admin.id}
+                              disabled={isAlreadyCollaborator}
+                            >
+                              {admin.name} {isAlreadyCollaborator ? '(sudah ada)' : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                      <Button
+                        onClick={handleInviteCollaborator}
+                        disabled={!selectedCollaborator || isInvitingCollaborator}
+                        className="w-full"
+                      >
+                        {isInvitingCollaborator ? 'Menambahkan...' : 'Tambah Kolaborator'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="rounded-md bg-blue-50 p-3 text-xs text-blue-600">
+                  <p className="font-medium">Catatan:</p>
+                  <ul className="mt-1 space-y-1 list-disc list-inside">
+                    <li>Ticket akan bertipe "collab" saat ada kolaborator</li>
+                    <li>Kolaborator dapat membantu menyelesaikan tiket</li>
+                    <li>Hanya pemilik tiket yang dapat manage kolaborator</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </AdminITLayout>
   )

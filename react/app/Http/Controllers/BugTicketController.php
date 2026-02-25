@@ -20,13 +20,22 @@ class BugTicketController extends Controller
                 ->oldest()
                 ->get();
         } elseif ($user->role === 'admin_it') {
-            // Admin IT hanya melihat tiket yang belum diambil atau miliknya sendiri
+            // Admin IT melihat tiket yang:
+            // 1. Belum diambil (unassigned open tickets)
+            // 2. Miliknya sendiri (assigned to admin)
+            // 3. Dia adalah collaborator di tiket tersebut
             $tickets = BugTicket::with(['user', 'assignedAdmin', 'messages.user'])
                 ->where(function ($query) use ($user) {
-                    $query->where(function ($unassignedQuery) {
-                        $unassignedQuery->whereNull('assigned_to')
-                            ->where('status', '!=', 'closed');
-                    })->orWhere('assigned_to', $user->id);
+                    $query
+                        // Unassigned open tickets
+                        ->where(function ($unassignedQuery) {
+                            $unassignedQuery->whereNull('assigned_to')
+                                ->where('status', '!=', 'closed');
+                        })
+                        // Or tickets assigned to this admin
+                        ->orWhere('assigned_to', $user->id)
+                        // Or tickets where this admin is a collaborator
+                        ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$user->id]);
                 })
                 ->oldest()
                 ->get();
@@ -258,6 +267,16 @@ class BugTicketController extends Controller
 
     public function getUnreadCount()
     {
+        // Handle unauthenticated requests gracefully
+        if (!Auth::check()) {
+            return response()->json([
+                'unread_tickets' => 0,
+                'total_unread' => 0,
+            ], 200, [
+                'Content-Type' => 'application/json',
+            ]);
+        }
+
         $count = BugTicket::where('user_id', Auth::id())
             ->whereHas('messages', function ($query) {
                 $query->where('is_read', false)
@@ -275,6 +294,8 @@ class BugTicketController extends Controller
         return response()->json([
             'unread_tickets' => $count,
             'total_unread' => $totalUnread,
+        ], 200, [
+            'Content-Type' => 'application/json',
         ]);
     }
 
@@ -309,7 +330,49 @@ class BugTicketController extends Controller
         $thisMonth = now()->startOfMonth();
         $thisYear = now()->startOfYear();
         $completedStatuses = ['resolved', 'closed'];
-        $completedTicketsQuery = BugTicket::where('assigned_to', $adminId)
+
+        // Helper function to get tickets assigned to or collaborated by admin
+        $getAdminTicketsQuery = function ($baseQuery) use ($adminId) {
+            return $baseQuery->where(function ($query) use ($adminId) {
+                $query->where('assigned_to', $adminId)
+                    ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$adminId]);
+            });
+        };
+
+        // Helper to count tickets by period (using resolved_at for completed, taken_at for others)
+        $countByPeriod = function ($period) use ($adminId, $today, $thisWeek, $thisMonth, $thisYear) {
+            $dateFilter = match($period) {
+                'today' => $today,
+                'week' => $thisWeek,
+                'month' => $thisMonth,
+                'year' => $thisYear,
+            };
+
+            return BugTicket::where(function ($query) use ($adminId) {
+                $query->where('assigned_to', $adminId)
+                    ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$adminId]);
+            })
+            ->where(function ($query) use ($dateFilter) {
+                // For completed tickets, use resolved_at
+                $query->where(function ($q) use ($dateFilter) {
+                    $q->whereIn('status', ['resolved', 'closed'])
+                        ->whereDate('resolved_at', '>=', $dateFilter);
+                })
+                // For non-completed tickets, use taken_at
+                ->orWhere(function ($q) use ($dateFilter) {
+                    $q->whereNotIn('status', ['resolved', 'closed'])
+                        ->whereDate('taken_at', '>=', $dateFilter);
+                });
+            })
+            ->count();
+        };
+
+        // Build base query for all tickets (assigned or collaborated)
+        $allTicketsQuery = BugTicket::query();
+        $allTicketsQuery = $getAdminTicketsQuery($allTicketsQuery);
+
+        // Build query for completed tickets
+        $completedTicketsQuery = (clone $allTicketsQuery)
             ->whereIn('status', $completedStatuses);
 
         $difficultyBreakdown = [
@@ -322,31 +385,27 @@ class BugTicketController extends Controller
             'hard' => (clone $completedTicketsQuery)
                 ->where('difficulty_level', 'hard')
                 ->count(),
+            'collab' => (clone $completedTicketsQuery)
+                ->where('collaboration_type', 'collab')
+                ->count(),
         ];
 
         $stats = [
-            'total_handled' => BugTicket::where('assigned_to', $adminId)->count(),
-            'today' => BugTicket::where('assigned_to', $adminId)
-                ->whereDate('taken_at', '>=', $today)
-                ->count(),
-            'this_week' => BugTicket::where('assigned_to', $adminId)
-                ->whereDate('taken_at', '>=', $thisWeek)
-                ->count(),
-            'this_month' => BugTicket::where('assigned_to', $adminId)
-                ->whereDate('taken_at', '>=', $thisMonth)
-                ->count(),
-            'this_year' => BugTicket::where('assigned_to', $adminId)
-                ->whereDate('taken_at', '>=', $thisYear)
-                ->count(),
-            'resolved_count' => BugTicket::where('assigned_to', $adminId)
-                ->whereIn('status', $completedStatuses)
-                ->count(),
-            'in_progress_count' => BugTicket::where('assigned_to', $adminId)
+            'total_handled' => (clone $allTicketsQuery)->count(),
+            'today' => $countByPeriod('today'),
+            'this_week' => $countByPeriod('week'),
+            'this_month' => $countByPeriod('month'),
+            'this_year' => $countByPeriod('year'),
+            'resolved_count' => (clone $completedTicketsQuery)->count(),
+            'in_progress_count' => (clone $allTicketsQuery)
                 ->where('status', 'in_progress')
                 ->count(),
             'average_resolution_time' => $this->calculateAverageResolutionTime($adminId),
             'difficulty_breakdown' => $difficultyBreakdown,
             'difficulty_total' => array_sum($difficultyBreakdown),
+            'collaboration_count' => (clone $allTicketsQuery)
+                ->where('collaboration_type', 'collab')
+                ->count(),
         ];
 
         return response()->json($stats);
@@ -354,7 +413,10 @@ class BugTicketController extends Controller
 
     private function calculateAverageResolutionTime($adminId)
     {
-        $resolvedTickets = BugTicket::where('assigned_to', $adminId)
+        $resolvedTickets = BugTicket::where(function ($query) use ($adminId) {
+                $query->where('assigned_to', $adminId)
+                    ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$adminId]);
+            })
             ->whereNotNull('taken_at')
             ->whereNotNull('resolved_at')
             ->get();
@@ -375,10 +437,16 @@ class BugTicketController extends Controller
         $admins = \App\Models\User::where('role', 'admin_it')->get();
         
         $ranking = $admins->map(function ($admin) {
-            $resolved = BugTicket::where('assigned_to', $admin->id)
+            // Query for tickets assigned or collaborated
+            $baseTicketQuery = BugTicket::where(function ($query) use ($admin) {
+                $query->where('assigned_to', $admin->id)
+                    ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$admin->id]);
+            });
+
+            $resolved = (clone $baseTicketQuery)
                 ->whereIn('status', ['resolved', 'closed'])
                 ->count();
-            $total = BugTicket::where('assigned_to', $admin->id)->count();
+            $total = (clone $baseTicketQuery)->count();
             $avgResolution = $this->calculateAverageResolutionTime($admin->id);
 
             return [
@@ -387,7 +455,7 @@ class BugTicketController extends Controller
                 'email' => $admin->email,
                 'total_handled' => $total,
                 'resolved' => $resolved,
-                'in_progress' => BugTicket::where('assigned_to', $admin->id)
+                'in_progress' => (clone $baseTicketQuery)
                     ->where('status', 'in_progress')
                     ->count(),
                 'average_resolution_hours' => $avgResolution,
@@ -548,38 +616,68 @@ class BugTicketController extends Controller
     {
         $admins = \App\Models\User::where('role', 'admin_it')->get();
         $lastTwoDaysStart = now()->subDays(2);
+        $thisMonth = now()->startOfMonth();
+        $thisYear = now()->startOfYear();
         
-        $stats = $admins->map(function ($admin) use ($lastTwoDaysStart) {
-            $totalTickets = BugTicket::where('assigned_to', $admin->id)->count();
-            $resolved = BugTicket::where('assigned_to', $admin->id)
+        $stats = $admins->map(function ($admin) use ($lastTwoDaysStart, $thisMonth, $thisYear) {
+            // Query for tickets assigned or collaborated
+            $baseTicketQuery = function () use ($admin) {
+                return BugTicket::where(function ($query) use ($admin) {
+                    $query->where('assigned_to', $admin->id)
+                        ->orWhereRaw('JSON_SEARCH(collaborators, "one", ?) IS NOT NULL', [$admin->id]);
+                });
+            };
+
+            $totalTickets = $baseTicketQuery()->count();
+            $resolved = $baseTicketQuery()
                 ->whereIn('status', ['resolved', 'closed'])
                 ->count();
-            $inProgress = BugTicket::where('assigned_to', $admin->id)
+            $inProgress = $baseTicketQuery()
                 ->where('status', 'in_progress')
                 ->count();
-            $pending = BugTicket::where('assigned_to', $admin->id)
+            $pending = $baseTicketQuery()
                 ->where('status', 'open')
                 ->count();
             
-            $thisMonth = now()->startOfMonth();
-            $thisYear = now()->startOfYear();
-            
-            $thisMonthTickets = BugTicket::where('assigned_to', $admin->id)
-                ->whereDate('taken_at', '>=', $thisMonth)
+            // Count by period using resolved_at for completed, taken_at for others
+            $thisMonthTickets = $baseTicketQuery()
+                ->where(function ($q) use ($thisMonth) {
+                    $q->where(function ($q2) use ($thisMonth) {
+                        $q2->whereIn('status', ['resolved', 'closed'])
+                            ->whereDate('resolved_at', '>=', $thisMonth);
+                    })
+                    ->orWhere(function ($q2) use ($thisMonth) {
+                        $q2->whereNotIn('status', ['resolved', 'closed'])
+                            ->whereDate('taken_at', '>=', $thisMonth);
+                    });
+                })
                 ->count();
             
-            $thisYearTickets = BugTicket::where('assigned_to', $admin->id)
-                ->whereDate('taken_at', '>=', $thisYear)
+            $thisYearTickets = $baseTicketQuery()
+                ->where(function ($q) use ($thisYear) {
+                    $q->where(function ($q2) use ($thisYear) {
+                        $q2->whereIn('status', ['resolved', 'closed'])
+                            ->whereDate('resolved_at', '>=', $thisYear);
+                    })
+                    ->orWhere(function ($q2) use ($thisYear) {
+                        $q2->whereNotIn('status', ['resolved', 'closed'])
+                            ->whereDate('taken_at', '>=', $thisYear);
+                    });
+                })
                 ->count();
             
             $avgResolution = $this->calculateAverageResolutionTime($admin->id);
             $performanceScore = $this->calculatePerformanceScore($admin->id, $resolved, $totalTickets, $avgResolution);
-            $resolvedLastTwoDays = BugTicket::where('assigned_to', $admin->id)
+            $resolvedLastTwoDays = $baseTicketQuery()
                 ->whereIn('status', ['resolved', 'closed'])
                 ->whereNotNull('resolved_at')
                 ->where('resolved_at', '>=', $lastTwoDaysStart)
                 ->count();
             $averageResolvedPerDay = round($resolvedLastTwoDays / 2, 2);
+            
+            $collaborationCount = $baseTicketQuery()
+                ->where('collaboration_type', 'collab')
+                ->count();
             
             return [
                 'id' => $admin->id,
@@ -596,12 +694,174 @@ class BugTicketController extends Controller
                 'resolution_rate' => $totalTickets > 0 ? round(($resolved / $totalTickets) * 100, 2) : 0,
                 'resolved_last_two_days' => $resolvedLastTwoDays,
                 'average_resolved_per_day' => $averageResolvedPerDay,
+                'collaboration_count' => $collaborationCount,
                 'created_at' => $admin->created_at,
                 'updated_at' => $admin->updated_at,
             ];
         })->sortByDesc('performance_score')->values();
 
         return response()->json($stats);
+    }
+
+    public function inviteCollaborator(Request $request, BugTicket $bugTicket)
+    {
+        try {
+            $user = Auth::user();
+
+            if ($user->role !== 'admin_it') {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Hanya Admin IT yang dapat menambah kolaborator.',
+                ], 403);
+            }
+
+            // Pastikan ticket sudah diambil dan dihandle oleh user ini
+            if ((int) $bugTicket->assigned_to !== (int) $user->id) {
+                return response()->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Tiket ini bukan milik Anda. Hanya pemilik tiket yang dapat menambah kolaborator.',
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'collaborator_id' => 'required|exists:users,id',
+            ]);
+
+            $collaboratorId = $validated['collaborator_id'];
+
+            // Pastikan admin yang diundang adalah admin_it
+            $collaborator = \App\Models\User::find($collaboratorId);
+            if (!$collaborator || $collaborator->role !== 'admin_it') {
+                return response()->json([
+                    'error' => 'Invalid collaborator',
+                    'message' => 'Hanya Admin IT yang dapat menjadi kolaborator.',
+                ], 422);
+            }
+
+            // Jangan izinkan user menginvite dirinya sendiri
+            if ((int) $collaboratorId === (int) $user->id) {
+                return response()->json([
+                    'error' => 'Invalid collaborator',
+                    'message' => 'Anda tidak dapat menginvite diri sendiri sebagai kolaborator.',
+                ], 422);
+            }
+
+            // Tambah collaborator
+            $bugTicket->addCollaborator($collaboratorId);
+            $bugTicket->collaboration_type = 'collab';
+            $bugTicket->save();
+
+            $bugTicket->refresh();
+            $bugTicket->load(['user', 'assignedAdmin']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Kolaborator berhasil ditambahkan',
+                'ticket' => $bugTicket,
+                'collaborators' => $bugTicket->getCollaboratorsDetails(),
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Error',
+                'message' => 'Data tidak valid',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Server Error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function removeCollaborator(Request $request, BugTicket $bugTicket)
+    {
+        try {
+            $user = Auth::user();
+
+            if ($user->role !== 'admin_it') {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Hanya Admin IT yang dapat menghapus kolaborator.',
+                ], 403);
+            }
+
+            // Pastikan ticket sudah diambil dan dihandle oleh user ini
+            if ((int) $bugTicket->assigned_to !== (int) $user->id) {
+                return response()->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Tiket ini bukan milik Anda.',
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'collaborator_id' => 'required|exists:users,id',
+            ]);
+
+            $collaboratorId = $validated['collaborator_id'];
+
+            // Hapus collaborator
+            $bugTicket->removeCollaborator($collaboratorId);
+
+            // Jika tidak ada collaborator lagi, ubah collaboration_type kembali ke solo
+            if (empty($bugTicket->collaborators)) {
+                $bugTicket->collaboration_type = 'solo';
+            }
+
+            $bugTicket->save();
+
+            $bugTicket->refresh();
+            $bugTicket->load(['user', 'assignedAdmin']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Kolaborator berhasil dihapus',
+                'ticket' => $bugTicket,
+                'collaborators' => $bugTicket->getCollaboratorsDetails(),
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Error',
+                'message' => 'Data tidak valid',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Server Error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getCollaborators(BugTicket $bugTicket)
+    {
+        try {
+            $user = Auth::user();
+
+            if ($response = $this->forbidOtherAdminTicketAccess($bugTicket, $user)) {
+                return $response;
+            }
+
+            $this->authorize('view', $bugTicket);
+
+            return response()->json([
+                'success' => true,
+                'collaboration_type' => $bugTicket->collaboration_type ?? 'solo',
+                'collaborators' => $bugTicket->getCollaboratorsDetails(),
+                'main_admin' => [
+                    'id' => $bugTicket->assignedAdmin?->id,
+                    'name' => $bugTicket->assignedAdmin?->name,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Server Error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     private function sanitizeTakeHistoryCollectionForViewer($tickets, $viewer)
@@ -617,10 +877,18 @@ class BugTicketController extends Controller
             return $ticket;
         }
 
+        // Show full info jika viewer adalah pemilik ticket
         if (!$ticket->assigned_to || (int) $ticket->assigned_to === (int) $viewer->id) {
             return $ticket;
         }
 
+        // Show full info jika viewer adalah collaborator
+        $isCollaborator = in_array($viewer->id, $ticket->collaborators ?? []);
+        if ($isCollaborator) {
+            return $ticket;
+        }
+
+        // Hide history jika bukan pemilik dan bukan collaborator
         // Riwayat pengambilan tiket bersifat privat untuk admin pemilik akun pengambil.
         $ticket->setAttribute('assigned_to', null);
         $ticket->setAttribute('taken_at', null);
@@ -639,10 +907,14 @@ class BugTicketController extends Controller
         }
 
         if ($ticket->assigned_to && (int) $ticket->assigned_to !== (int) $viewer->id) {
-            return response()->json([
-                'error' => 'Forbidden',
-                'message' => 'Tiket ini milik akun admin lain dan tidak dapat diakses.',
-            ], 403);
+            // Allow access jika viewer adalah collaborator
+            $isCollaborator = in_array($viewer->id, $ticket->collaborators ?? []);
+            if (!$isCollaborator) {
+                return response()->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Tiket ini milik akun admin lain dan tidak dapat diakses.',
+                ], 403);
+            }
         }
 
         if (!$ticket->assigned_to && $ticket->status === 'closed') {

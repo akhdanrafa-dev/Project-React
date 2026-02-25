@@ -30,15 +30,17 @@ interface AdminStats {
   resolved_count: number
   in_progress_count: number
   average_resolution_time: number
+  collaboration_count?: number
   difficulty_total?: number
   difficulty_breakdown: {
     easy: number
     medium: number
     hard: number
+    collab?: number
   }
 }
 
-const COLORS = ['#10b981', '#f59e0b', '#ef4444']
+const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 export default function AdminITStatistics() {
   const { auth } = usePage<SharedData>().props
@@ -54,20 +56,30 @@ export default function AdminITStatistics() {
       return
     }
 
-    const fetchStats = async () => {
+    const fetchStats = async (isPolling = false) => {
       try {
+        if (!isPolling) setLoading(true)
         const response = await fetch(`/admin-it/statistics/${adminId}`)
         if (!response.ok) throw new Error('Failed to fetch statistics')
         const data = await response.json()
         setStats(data)
+        if (!isPolling) setError(null)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred')
+        if (!isPolling) {
+          setError(err instanceof Error ? err.message : 'An error occurred')
+        }
       } finally {
-        setLoading(false)
+        if (!isPolling) setLoading(false)
       }
     }
 
     fetchStats()
+    
+    const interval = setInterval(() => {
+      fetchStats(true)
+    }, 5000)
+
+    return () => clearInterval(interval)
   }, [adminId])
 
   if (loading) {
@@ -101,6 +113,7 @@ export default function AdminITStatistics() {
     { name: 'Mudah', value: stats.difficulty_breakdown.easy },
     { name: 'Sedang', value: stats.difficulty_breakdown.medium },
     { name: 'Sulit', value: stats.difficulty_breakdown.hard },
+    ...(stats.difficulty_breakdown.collab ? [{ name: 'Kolaborasi', value: stats.difficulty_breakdown.collab }] : []),
   ]
 
   const resolutionData = [
@@ -188,6 +201,18 @@ export default function AdminITStatistics() {
               <p className="text-xs text-muted-foreground">Jam per tiket</p>
             </CardContent>
           </Card>
+
+          {stats.collaboration_count !== undefined && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Kolaborasi</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.collaboration_count}</div>
+                <p className="text-xs text-muted-foreground">Tiket berkolaborasi</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Charts */}

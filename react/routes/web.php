@@ -155,7 +155,27 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/api/bug-tickets/{bugTicket}/mark-as-read', [BugTicketController::class, 'markTicketAsRead']);
     Route::patch('/api/bug-tickets/{bugTicket}/take', [BugTicketController::class, 'take']);
     Route::post('/api/bug-tickets/{bugTicket}/appeal', [BugTicketController::class, 'submitAppeal']);
+    
+    // Collaboration endpoints
+    Route::post('/api/bug-tickets/{bugTicket}/collaborators/invite', [BugTicketController::class, 'inviteCollaborator']);
+    Route::delete('/api/bug-tickets/{bugTicket}/collaborators/remove', [BugTicketController::class, 'removeCollaborator']);
+    Route::get('/api/bug-tickets/{bugTicket}/collaborators', [BugTicketController::class, 'getCollaborators']);
+    
     Route::post('/api/chatbot/reply', [ChatbotAIController::class, 'reply']);
+
+    // Admin IT List API
+    Route::get('/api/admin-it-list', function () {
+        return response()->json(
+            \App\Models\User::where('role', 'admin_it')->get()->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                ];
+            })
+        );
+    });
 
     /*
     |--------------------------------------------------------------------------

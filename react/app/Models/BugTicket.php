@@ -19,6 +19,8 @@ class BugTicket extends Model
         'category',
         'priority',
         'difficulty_level',
+        'collaboration_type',
+        'collaborators',
         'status',
         'assigned_to',
         'taken_at',
@@ -52,6 +54,7 @@ class BugTicket extends Model
         'updated_at' => 'datetime',
         'taken_at' => 'datetime',
         'resolved_at' => 'datetime',
+        'collaborators' => 'array',
     ];
 
     public function user(): BelongsTo
@@ -87,5 +90,41 @@ class BugTicket extends Model
     public function isArchivedChat(): bool
     {
         return in_array($this->status, self::ARCHIVED_STATUSES, true);
+    }
+
+    public function getCollaboratorsDetails()
+    {
+        if (!$this->collaborators || !is_array($this->collaborators)) {
+            return [];
+        }
+
+        return User::whereIn('id', $this->collaborators)
+            ->get(['id', 'name', 'email'])
+            ->toArray();
+    }
+
+    public function addCollaborator($userId)
+    {
+        if (!$this->collaborators) {
+            $this->collaborators = [];
+        }
+
+        if (!in_array($userId, $this->collaborators)) {
+            $this->collaborators = array_merge($this->collaborators, [$userId]);
+        }
+
+        return $this;
+    }
+
+    public function removeCollaborator($userId)
+    {
+        if ($this->collaborators && is_array($this->collaborators)) {
+            $this->collaborators = array_filter($this->collaborators, function ($id) use ($userId) {
+                return $id != $userId;
+            });
+            $this->collaborators = array_values($this->collaborators);
+        }
+
+        return $this;
     }
 }
