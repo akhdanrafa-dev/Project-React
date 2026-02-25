@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react'
-import { Send, ArrowLeft, CheckCircle2, Clock } from 'lucide-react'
+import { Send, ArrowLeft, CheckCircle2, Clock, ImagePlus, X } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,9 @@ interface ChatMessage {
   id: number
   user_id: number
   message: string
+  image_url?: string | null
+  image_original_name?: string | null
+  image_size?: number | null
   created_at: string
   user: {
     id: number
@@ -63,6 +66,14 @@ const getCsrfToken = () => {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
 }
 
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+
+const formatFileSize = (size: number) => {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export default function AdminITChat({ ticketId }: Props) {
   const { auth } = usePage<SharedData>().props
   const [ticket, setTicket] = useState<Ticket | null>(null)
@@ -70,7 +81,10 @@ export default function AdminITChat({ ticketId }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const currentUserId = auth.user?.id || 0
 
   useEffect(() => {
@@ -80,6 +94,14 @@ export default function AdminITChat({ ticketId }: Props) {
   useEffect(() => {
     scrollToBottom()
   }, [ticket?.messages])
+
+  useEffect(() => {
+    return () => {
+      if (selectedImagePreviewUrl) {
+        URL.revokeObjectURL(selectedImagePreviewUrl)
+      }
+    }
+  }, [selectedImagePreviewUrl])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -114,26 +136,87 @@ export default function AdminITChat({ ticketId }: Props) {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!message.trim() || sending) return
+    const trimmedMessage = message.trim()
+    if ((!trimmedMessage && !selectedImage) || sending) return
 
     setSending(true)
     try {
+      const formData = new FormData()
+      if (trimmedMessage) {
+        formData.append('message', trimmedMessage)
+      }
+      if (selectedImage) {
+        formData.append('image', selectedImage)
+      }
+
       const response = await fetch(`/api/bug-tickets/${ticketId}/messages`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'X-CSRF-Token': getCsrfToken(),
+          Accept: 'application/json',
         },
-        body: JSON.stringify({ message: message.trim() }),
+        credentials: 'same-origin',
+        body: formData,
       })
 
-      if (!response.ok) throw new Error('Failed to send message')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        const validationMessage = errorData?.errors
+          ? (Object.values(errorData.errors).flat()[0] as string | undefined)
+          : undefined
+
+        throw new Error(validationMessage || errorData?.message || 'Failed to send message')
+      }
       setMessage('')
+      setSelectedImage(null)
+      if (selectedImagePreviewUrl) {
+        URL.revokeObjectURL(selectedImagePreviewUrl)
+      }
+      setSelectedImagePreviewUrl(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
       await fetchTicket()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message')
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleSelectImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('File harus berupa gambar.')
+      event.target.value = ''
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setError('Ukuran gambar maksimal 5MB.')
+      event.target.value = ''
+      return
+    }
+
+    if (selectedImagePreviewUrl) {
+      URL.revokeObjectURL(selectedImagePreviewUrl)
+    }
+
+    setError(null)
+    setSelectedImage(file)
+    setSelectedImagePreviewUrl(URL.createObjectURL(file))
+  }
+
+  const clearSelectedImage = () => {
+    setSelectedImage(null)
+    if (selectedImagePreviewUrl) {
+      URL.revokeObjectURL(selectedImagePreviewUrl)
+    }
+    setSelectedImagePreviewUrl(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
@@ -263,6 +346,10 @@ export default function AdminITChat({ ticketId }: Props) {
     ticket.assigned_admin?.name ??
     (ticket.assigned_to === currentUserId ? auth.user?.name ?? null : null)
 
+  const userImageMessages = ticket.messages.filter(
+    (msg) => msg.user?.role === 'user' && !!msg.image_url,
+  )
+
   return (
     <AdminITLayout>
       <div className="space-y-4 p-4 md:p-6">
@@ -328,7 +415,31 @@ export default function AdminITChat({ ticketId }: Props) {
                           }`}
                         >
                           <p className="text-sm font-medium mb-1">{msg.user.name}</p>
-                          <p className="text-sm">{msg.message}</p>
+                          {msg.message ? <p className="text-sm">{msg.message}</p> : null}
+                          {msg.image_url ? (
+                            <a
+                              href={msg.image_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 block rounded-md border border-gray-300 bg-white"
+                            >
+                              <img
+                                src={msg.image_url}
+                                alt={msg.image_original_name || 'Lampiran chat'}
+                                className="max-h-64 w-full rounded-md object-contain"
+                                loading="lazy"
+                              />
+                            </a>
+                          ) : null}
+                          {msg.image_original_name ? (
+                            <p
+                              className={`mt-1 text-[11px] ${
+                                msg.user_id === currentUserId ? 'text-blue-100' : 'text-gray-500'
+                              }`}
+                            >
+                              {msg.image_original_name}
+                            </p>
+                          ) : null}
                           <p
                             className={`text-xs mt-1 ${
                               msg.user_id === currentUserId
@@ -348,21 +459,71 @@ export default function AdminITChat({ ticketId }: Props) {
 
               {/* Message Input */}
               <div className="border-t p-4">
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                  <Input
-                    placeholder="Ketik pesan..."
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    disabled={sending || ['resolved', 'closed'].includes(ticket.status)}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={
-                      sending || !message.trim() || ['resolved', 'closed'].includes(ticket.status)
-                    }
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                <form onSubmit={handleSendMessage} className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Ketik pesan atau lampirkan screenshot..."
+                      value={message}
+                      onChange={e => setMessage(e.target.value)}
+                      disabled={sending || ['resolved', 'closed'].includes(ticket.status)}
+                    />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleSelectImage}
+                      disabled={sending || ['resolved', 'closed'].includes(ticket.status)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={sending || ['resolved', 'closed'].includes(ticket.status)}
+                    >
+                      <ImagePlus className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={
+                        sending ||
+                        (!message.trim() && !selectedImage) ||
+                        ['resolved', 'closed'].includes(ticket.status)
+                      }
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {selectedImage ? (
+                    <div className="rounded-md border bg-muted/30 p-2">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-medium">
+                          {selectedImage.name} ({formatFileSize(selectedImage.size)})
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={clearSelectedImage}
+                          title="Hapus gambar"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {selectedImagePreviewUrl ? (
+                        <img
+                          src={selectedImagePreviewUrl}
+                          alt="Preview gambar"
+                          className="max-h-40 rounded-md object-contain"
+                        />
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      Batas ukuran gambar: 5MB.
+                    </p>
+                  )}
                 </form>
               </div>
             </Card>
@@ -427,8 +588,12 @@ export default function AdminITChat({ ticketId }: Props) {
                   <p className="text-sm font-medium text-green-600">
                     {`Sudah di handle oleh (${assignedAdminName})`}
                   </p>
-                ) : (
+                ) : ticket.status === 'open' ? (
                   <p className="text-sm text-muted-foreground">Belum di-handle</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Riwayat pengambilan tiket hanya dapat dilihat oleh pemilik akun.
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -441,6 +606,44 @@ export default function AdminITChat({ ticketId }: Props) {
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                   {ticket.description}
                 </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Galeri Bukti User</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {userImageMessages.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Belum ada screenshot dari user pada tiket ini.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Total bukti gambar: {userImageMessages.length}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {userImageMessages.map((msg) => (
+                        <a
+                          key={msg.id}
+                          href={msg.image_url ?? '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block overflow-hidden rounded-md border bg-muted/20"
+                          title={msg.image_original_name || `Bukti #${msg.id}`}
+                        >
+                          <img
+                            src={msg.image_url ?? ''}
+                            alt={msg.image_original_name || `Bukti #${msg.id}`}
+                            className="h-28 w-full object-cover"
+                            loading="lazy"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -478,3 +681,5 @@ export default function AdminITChat({ ticketId }: Props) {
     </AdminITLayout>
   )
 }
+
+

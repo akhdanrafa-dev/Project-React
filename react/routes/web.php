@@ -146,12 +146,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     | Bug Tickets API
     |--------------------------------------------------------------------------
     */
+    Route::get('/api/bug-tickets/unread-count', [BugTicketController::class, 'getUnreadCount']);
     Route::get('/api/bug-tickets', [BugTicketController::class, 'index']);
     Route::post('/api/bug-tickets', [BugTicketController::class, 'store']);
     Route::get('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'show']);
     Route::patch('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'update']);
     Route::delete('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'destroy']);
-    Route::get('/api/bug-tickets/unread-count', [BugTicketController::class, 'getUnreadCount']);
     Route::patch('/api/bug-tickets/{bugTicket}/mark-as-read', [BugTicketController::class, 'markTicketAsRead']);
     Route::patch('/api/bug-tickets/{bugTicket}/take', [BugTicketController::class, 'take']);
     Route::post('/api/bug-tickets/{bugTicket}/appeal', [BugTicketController::class, 'submitAppeal']);

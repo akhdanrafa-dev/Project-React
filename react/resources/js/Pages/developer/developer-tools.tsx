@@ -391,8 +391,10 @@ function DeveloperToolsContent() {
                               <span className="text-sm font-medium text-gray-700">
                                 Telah di Handle {ticket.assignedAdmin.name}
                               </span>
-                            ) : (
+                            ) : ticket.status === "open" ? (
                               <Badge variant="secondary" className="bg-gray-100 text-gray-800">Belum di Handle</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-gray-600">Riwayat privat</Badge>
                             )}
                           </TableCell>
                         </TableRow>

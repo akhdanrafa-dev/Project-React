@@ -29,6 +29,8 @@ interface ChatMessage {
   id: number
   user_id: number
   message: string
+  image_url?: string | null
+  image_original_name?: string | null
   created_at: string
   user: {
     id: number
@@ -358,7 +360,25 @@ export default function AdminITChatArchive() {
                     >
                       <div className="max-w-xs px-4 py-2 rounded-lg bg-gray-100">
                         <p className="text-xs font-medium text-muted-foreground">{msg.user.name}</p>
-                        <p className="text-sm">{msg.message}</p>
+                        {msg.message ? <p className="text-sm">{msg.message}</p> : null}
+                        {msg.image_url ? (
+                          <a
+                            href={msg.image_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 block rounded-md border border-gray-300 bg-white"
+                          >
+                            <img
+                              src={msg.image_url}
+                              alt={msg.image_original_name || 'Lampiran chat'}
+                              className="max-h-64 w-full rounded-md object-contain"
+                              loading="lazy"
+                            />
+                          </a>
+                        ) : null}
+                        {msg.image_original_name ? (
+                          <p className="mt-1 text-[11px] text-muted-foreground">{msg.image_original_name}</p>
+                        ) : null}
                         <p className="text-[10px] text-muted-foreground">
                           {new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                         </p>

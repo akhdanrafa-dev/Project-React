@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react'
-import { ArrowLeft, CheckCircle2, MessageSquare } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ImagePlus, MessageSquare, X } from 'lucide-react'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,9 @@ interface ChatMessage {
   id: number
   user_id: number
   message: string
+  image_url?: string | null
+  image_original_name?: string | null
+  image_size?: number | null
   created_at: string
   user: {
     id: number
@@ -67,6 +70,14 @@ const getCsrfToken = () => {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
 }
 
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+
+const formatFileSize = (size: number) => {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
 const isChatTicketVisible = (ticket: Pick<Ticket, 'status'>) => ticket.status !== 'closed'
 const normalizeTicket = (ticket: Ticket): Ticket => ({
   ...ticket,
@@ -83,7 +94,10 @@ export default function AdminITChats() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const autoScrollRef = useRef(true)
   const lastTicketIdRef = useRef<number | null>(null)
   const lastMessageCountRef = useRef(0)
@@ -132,6 +146,28 @@ export default function AdminITChats() {
     lastTicketIdRef.current = currentTicketId
     lastMessageCountRef.current = currentMessageCount
   }, [selectedTicket?.id, selectedTicket?.messages?.length])
+
+  useEffect(() => {
+    return () => {
+      if (selectedImagePreviewUrl) {
+        URL.revokeObjectURL(selectedImagePreviewUrl)
+      }
+    }
+  }, [selectedImagePreviewUrl])
+
+  useEffect(() => {
+    setMessage('')
+    setSelectedImage(null)
+    setSelectedImagePreviewUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev)
+      }
+      return null
+    })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [selectedTicketId])
 
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
     const container = messagesContainerRef.current
@@ -231,28 +267,87 @@ export default function AdminITChats() {
 
   const handleSendMessage = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!message.trim() || !selectedTicketId || sending) return
+    const trimmedMessage = message.trim()
+    if ((!trimmedMessage && !selectedImage) || !selectedTicketId || sending) return
 
     setSending(true)
     try {
+      const formData = new FormData()
+      if (trimmedMessage) {
+        formData.append('message', trimmedMessage)
+      }
+      if (selectedImage) {
+        formData.append('image', selectedImage)
+      }
+
       const response = await fetch(`/api/bug-tickets/${selectedTicketId}/messages`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'X-CSRF-Token': getCsrfToken(),
           Accept: 'application/json',
         },
         credentials: 'same-origin',
-        body: JSON.stringify({ message: message.trim() }),
+        body: formData,
       })
 
-      if (!response.ok) throw new Error('Gagal mengirim pesan')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        const validationMessage = errorData?.errors
+          ? (Object.values(errorData.errors).flat()[0] as string | undefined)
+          : undefined
+
+        throw new Error(validationMessage || errorData?.message || 'Gagal mengirim pesan')
+      }
       setMessage('')
+      setSelectedImage(null)
+      if (selectedImagePreviewUrl) {
+        URL.revokeObjectURL(selectedImagePreviewUrl)
+      }
+      setSelectedImagePreviewUrl(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
       await fetchTicketDetails(selectedTicketId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleSelectImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('File harus berupa gambar.')
+      event.target.value = ''
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setError('Ukuran gambar maksimal 5MB.')
+      event.target.value = ''
+      return
+    }
+
+    if (selectedImagePreviewUrl) {
+      URL.revokeObjectURL(selectedImagePreviewUrl)
+    }
+
+    setError(null)
+    setSelectedImage(file)
+    setSelectedImagePreviewUrl(URL.createObjectURL(file))
+  }
+
+  const clearSelectedImage = () => {
+    setSelectedImage(null)
+    if (selectedImagePreviewUrl) {
+      URL.revokeObjectURL(selectedImagePreviewUrl)
+    }
+    setSelectedImagePreviewUrl(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
@@ -362,6 +457,13 @@ export default function AdminITChats() {
     }
   }
 
+  const selectedTicketUserImages = (selectedTicket?.messages ?? []).filter(
+    (msg) => msg.user?.role === 'user' && !!msg.image_url,
+  )
+  const isSelectedTicketChatLocked = selectedTicket
+    ? ['resolved', 'closed'].includes(selectedTicket.status)
+    : true
+
   return (
     <AdminITLayout>
       <Head title="Chat Tiket" />
@@ -459,8 +561,12 @@ export default function AdminITChats() {
                       <div className="mt-2 text-xs">
                         {selectedTicket.assignedAdmin ? (
                           <span className="text-green-600">Handle By: {selectedTicket.assignedAdmin.name}</span>
-                        ) : (
+                        ) : selectedTicket.status === 'open' ? (
                           <span className="text-orange-600">Belum di-handle</span>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Riwayat pengambilan tiket hanya dapat dilihat oleh pemilik akun.
+                          </span>
                         )}
                       </div>
                     )}
@@ -512,7 +618,33 @@ export default function AdminITChats() {
                           className={`rounded-lg px-3 py-2 ${msg.user_id === currentUserId ? 'bg-blue-600 text-white' : 'bg-white text-foreground border'
                             }`}
                         >
-                          {msg.message}
+                          {msg.message ? <p>{msg.message}</p> : null}
+                          {msg.image_url ? (
+                            <a
+                              href={msg.image_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`mt-2 block rounded-md border ${
+                                msg.user_id === currentUserId ? 'border-blue-300/50' : 'border-slate-200'
+                              }`}
+                            >
+                              <img
+                                src={msg.image_url}
+                                alt={msg.image_original_name || 'Lampiran chat'}
+                                className="max-h-64 w-full rounded-md object-contain bg-black/5"
+                                loading="lazy"
+                              />
+                            </a>
+                          ) : null}
+                          {msg.image_original_name ? (
+                            <p
+                              className={`mt-1 text-[11px] ${
+                                msg.user_id === currentUserId ? 'text-blue-100' : 'text-muted-foreground'
+                              }`}
+                            >
+                              {msg.image_original_name}
+                            </p>
+                          ) : null}
                         </div>
                         <p className="text-[10px] text-muted-foreground">
                           {new Date(msg.created_at).toLocaleTimeString('id-ID', {
@@ -527,6 +659,41 @@ export default function AdminITChats() {
               </div>
 
               <form onSubmit={handleSendMessage} className="border-t p-4 space-y-3">
+                {selectedTicket ? (
+                  <div className="rounded-md border bg-muted/20 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-medium">Galeri Bukti User</p>
+                      <span className="text-[11px] text-muted-foreground">
+                        {selectedTicketUserImages.length} gambar
+                      </span>
+                    </div>
+                    {selectedTicketUserImages.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Belum ada screenshot dari user pada tiket ini.
+                      </p>
+                    ) : (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {selectedTicketUserImages.map((msg) => (
+                          <a
+                            key={msg.id}
+                            href={msg.image_url ?? '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block shrink-0 overflow-hidden rounded-md border bg-white"
+                            title={msg.image_original_name || `Bukti #${msg.id}`}
+                          >
+                            <img
+                              src={msg.image_url ?? ''}
+                              alt={msg.image_original_name || `Bukti #${msg.id}`}
+                              className="h-20 w-20 object-cover"
+                              loading="lazy"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs text-muted-foreground">
                     {selectedTicket?.status === 'open'
@@ -551,18 +718,75 @@ export default function AdminITChats() {
                     )}
                   </div>
                 </div>
-                <Input
-                  placeholder="Tulis pesan..."
-                  value={message}
-                  onChange={e => setMessage(e.target.value)}
-                  disabled={!selectedTicket}
-                />
-                <Button
-                  type="submit"
-                  disabled={!selectedTicket || sending || !message.trim()}
-                >
-                  Kirim
-                </Button>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Tulis pesan atau lampirkan screenshot..."
+                      value={message}
+                      onChange={e => setMessage(e.target.value)}
+                      disabled={!selectedTicket || isSelectedTicketChatLocked}
+                    />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleSelectImage}
+                      disabled={!selectedTicket || isSelectedTicketChatLocked}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!selectedTicket || isSelectedTicketChatLocked}
+                    >
+                      <ImagePlus className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={
+                        !selectedTicket ||
+                        isSelectedTicketChatLocked ||
+                        sending ||
+                        (!message.trim() && !selectedImage)
+                      }
+                    >
+                      Kirim
+                    </Button>
+                  </div>
+                  {selectedImage ? (
+                    <div className="rounded-md border bg-muted/20 p-2">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-medium">
+                          {selectedImage.name} ({formatFileSize(selectedImage.size)})
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={clearSelectedImage}
+                          title="Hapus gambar"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {selectedImagePreviewUrl ? (
+                        <img
+                          src={selectedImagePreviewUrl}
+                          alt="Preview gambar"
+                          className="max-h-36 rounded-md object-contain"
+                        />
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      {isSelectedTicketChatLocked
+                        ? 'Chat terkunci karena tiket sudah terselesaikan/ditutup.'
+                        : 'Batas ukuran gambar: 5MB.'}
+                    </p>
+                  )}
+                </div>
               </form>
             </div>
           </Card>
@@ -571,3 +795,5 @@ export default function AdminITChats() {
     </AdminITLayout>
   )
 }
+
+

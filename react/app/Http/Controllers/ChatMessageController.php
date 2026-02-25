@@ -17,29 +17,87 @@ class ChatMessageController extends Controller
 
     public function store(Request $request, BugTicket $bugTicket)
     {
-        $this->authorize('view', $bugTicket);
+        try {
+            $this->authorize('view', $bugTicket);
 
-        if ($bugTicket->isArchivedChat()) {
+            if ($bugTicket->isArchivedChat()) {
+                return response()->json([
+                    'error' => 'Ticket archived',
+                    'message' => 'Chat tiket ini sudah diarsipkan.',
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'message' => 'nullable|string|max:5000|required_without:image',
+                'image' => 'nullable|image|max:5120|required_without:message',
+            ], [
+                'message.required_without' => 'Pesan wajib diisi jika tidak mengirim gambar.',
+                'image.required_without' => 'Gambar wajib diunggah jika pesan kosong.',
+                'image.image' => 'File yang diunggah harus berupa gambar.',
+                'image.max' => 'Ukuran gambar maksimal 5MB.',
+            ]);
+
+            $messageText = trim((string) ($validated['message'] ?? ''));
+            $imagePath = null;
+            $imageOriginalName = null;
+            $imageSize = null;
+            $imageMimeType = null;
+
+            if ($request->hasFile('image')) {
+                $image = $request->file('image');
+
+                $imagePath = $image->store("chat-images/ticket-{$bugTicket->id}", 'public');
+                $imageOriginalName = $image->getClientOriginalName();
+                $imageSize = $image->getSize();
+                $imageMimeType = $image->getClientMimeType();
+            }
+
+            if ($messageText === '' && !$imagePath) {
+                return response()->json([
+                    'error' => 'Validation Error',
+                    'message' => 'Pesan atau gambar wajib diisi.',
+                ], 422);
+            }
+
+            $message = ChatMessage::create([
+                'ticket_id' => $bugTicket->id,
+                'user_id' => Auth::id(),
+                'message' => $messageText,
+                'image_path' => $imagePath,
+                'image_original_name' => $imageOriginalName,
+                'image_size' => $imageSize,
+                'image_mime_type' => $imageMimeType,
+                'is_read' => false,
+            ]);
+
+            $message->load('user');
+
+            return response()->json($message, 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
-                'error' => 'Ticket archived',
-                'message' => 'Chat tiket ini sudah diarsipkan.',
+                'error' => 'Validation Error',
+                'message' => 'Data tidak valid',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json([
+                'error' => 'Unauthorized',
+                'message' => 'Anda tidak memiliki izin untuk mengakses tiket ini.',
             ], 403);
+        } catch (\Exception $e) {
+            \Log::error('ChatMessage Store Error: ' . $e->getMessage(), [
+                'user_id' => Auth::id(),
+                'ticket_id' => $bugTicket->id ?? null,
+                'exception' => $e,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'error' => 'Server Error',
+                'message' => 'Gagal mengirim pesan. Silakan coba lagi.',
+            ], 500);
         }
-
-        $validated = $request->validate([
-            'message' => 'required|string',
-        ]);
-
-        $message = ChatMessage::create([
-            'ticket_id' => $bugTicket->id,
-            'user_id' => Auth::id(),
-            'message' => $validated['message'],
-            'is_read' => false,
-        ]);
-
-        $message->load('user');
-
-        return response()->json($message, 201);
     }
 
     public function getMessages(BugTicket $bugTicket)

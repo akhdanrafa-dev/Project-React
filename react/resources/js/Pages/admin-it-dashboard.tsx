@@ -403,7 +403,7 @@ export default function AdminITDashboard() {
                 </TableHeader>
                 <TableBody>
                   {tickets
-                    .filter(ticket => ticket.status === 'in_progress' && ticket.assigned_to)
+                    .filter(ticket => ticket.status === 'in_progress' && ticket.assigned_to === currentUserId)
                     .map(ticket => (
                       <TableRow key={ticket.id}>
                         <TableCell className="font-mono text-sm">
@@ -457,7 +457,7 @@ export default function AdminITDashboard() {
                     ))}
                 </TableBody>
               </Table>
-              {tickets.filter(t => t.status === 'in_progress' && t.assigned_to).length === 0 && (
+              {tickets.filter(t => t.status === 'in_progress' && t.assigned_to === currentUserId).length === 0 && (
                 <div className="flex items-center justify-center h-32">
                   <p className="text-muted-foreground">Tidak ada tiket yang sedang diproses</p>
                 </div>

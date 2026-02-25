@@ -6,6 +6,7 @@ use App\Models\BugTicket;
 use App\Models\ChatMessage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class BugTicketController extends Controller
 {
@@ -13,9 +14,20 @@ class BugTicketController extends Controller
     {
         $user = Auth::user();
         
-        // Jika user adalah developer atau admin_it, tampilkan semua bug tickets
-        if ($user->role === 'developer' || $user->role === 'admin_it') {
+        // Developer dapat melihat semua bug tickets
+        if ($user->role === 'developer') {
             $tickets = BugTicket::with(['user', 'assignedAdmin', 'messages.user'])
+                ->oldest()
+                ->get();
+        } elseif ($user->role === 'admin_it') {
+            // Admin IT hanya melihat tiket yang belum diambil atau miliknya sendiri
+            $tickets = BugTicket::with(['user', 'assignedAdmin', 'messages.user'])
+                ->where(function ($query) use ($user) {
+                    $query->where(function ($unassignedQuery) {
+                        $unassignedQuery->whereNull('assigned_to')
+                            ->where('status', '!=', 'closed');
+                    })->orWhere('assigned_to', $user->id);
+                })
                 ->oldest()
                 ->get();
         } else {
@@ -30,6 +42,8 @@ class BugTicketController extends Controller
                 ->latest()
                 ->get();
         }
+
+        $tickets = $this->sanitizeTakeHistoryCollectionForViewer($tickets, $user);
 
         return response()->json($tickets);
     }
@@ -85,9 +99,14 @@ class BugTicketController extends Controller
 
     public function show(BugTicket $bugTicket)
     {
-        $this->authorize('view', $bugTicket);
+        $user = Auth::user();
+        if ($response = $this->forbidOtherAdminTicketAccess($bugTicket, $user)) {
+            return $response;
+        }
 
+        $this->authorize('view', $bugTicket);
         $bugTicket->load(['messages.user', 'user', 'assignedAdmin']);
+        $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
 
         return response()->json($bugTicket);
     }
@@ -95,8 +114,12 @@ class BugTicketController extends Controller
     public function update(Request $request, BugTicket $bugTicket)
     {
         try {
-            $this->authorize('update', $bugTicket);
             $user = Auth::user();
+            if ($response = $this->forbidOtherAdminTicketAccess($bugTicket, $user)) {
+                return $response;
+            }
+
+            $this->authorize('update', $bugTicket);
 
             $validated = $request->validate([
                 'status' => 'sometimes|in:open,in_progress,resolved,closed,diproses kembali',
@@ -167,6 +190,7 @@ class BugTicketController extends Controller
 
             $bugTicket->update($validated);
             $bugTicket->load(['user', 'assignedAdmin', 'messages.user']);
+            $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
 
             return response()->json($bugTicket);
 
@@ -201,7 +225,18 @@ class BugTicketController extends Controller
                 ], 422);
             }
 
+            $imagePaths = $bugTicket->messages()
+                ->whereNotNull('image_path')
+                ->pluck('image_path')
+                ->filter()
+                ->values()
+                ->all();
+
             $bugTicket->delete();
+
+            if (!empty($imagePaths)) {
+                Storage::disk('public')->delete($imagePaths);
+            }
 
             return response()->json([
                 'success' => true,
@@ -245,6 +280,11 @@ class BugTicketController extends Controller
 
     public function markTicketAsRead(BugTicket $bugTicket)
     {
+        $user = Auth::user();
+        if ($response = $this->forbidOtherAdminTicketAccess($bugTicket, $user)) {
+            return $response;
+        }
+
         $this->authorize('view', $bugTicket);
 
         $bugTicket->messages()
@@ -373,7 +413,6 @@ class BugTicketController extends Controller
     public function take(Request $request, BugTicket $bugTicket)
     {
         try {
-            $this->authorize('update', $bugTicket);
             $user = Auth::user();
 
             if ($user->role !== 'admin_it') {
@@ -382,6 +421,12 @@ class BugTicketController extends Controller
                     'message' => 'Hanya Admin IT yang dapat mengambil tiket.',
                 ], 403);
             }
+
+            if ($response = $this->forbidOtherAdminTicketAccess($bugTicket, $user)) {
+                return $response;
+            }
+
+            $this->authorize('update', $bugTicket);
 
             $validated = $request->validate([
                 'assigned_to' => 'required|exists:users,id',
@@ -403,6 +448,7 @@ class BugTicketController extends Controller
             $bugTicket->update($validated);
             $bugTicket->refresh();
             $bugTicket->load(['user', 'assignedAdmin']);
+            $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
 
             return response()->json($bugTicket);
 
@@ -465,7 +511,10 @@ class BugTicketController extends Controller
             return response()->json([
                 'message' => 'Aju banding berhasil diajukan',
                 'appeal_count' => $bugTicket->appeal_count,
-                'ticket' => $bugTicket->load(['user', 'messages.user']),
+                'ticket' => $this->sanitizeTakeHistoryForViewer(
+                    $bugTicket->load(['user', 'messages.user']),
+                    Auth::user()
+                ),
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -553,5 +602,56 @@ class BugTicketController extends Controller
         })->sortByDesc('performance_score')->values();
 
         return response()->json($stats);
+    }
+
+    private function sanitizeTakeHistoryCollectionForViewer($tickets, $viewer)
+    {
+        return $tickets->map(function (BugTicket $ticket) use ($viewer) {
+            return $this->sanitizeTakeHistoryForViewer($ticket, $viewer);
+        });
+    }
+
+    private function sanitizeTakeHistoryForViewer(BugTicket $ticket, $viewer): BugTicket
+    {
+        if (!$viewer) {
+            return $ticket;
+        }
+
+        if (!$ticket->assigned_to || (int) $ticket->assigned_to === (int) $viewer->id) {
+            return $ticket;
+        }
+
+        // Riwayat pengambilan tiket bersifat privat untuk admin pemilik akun pengambil.
+        $ticket->setAttribute('assigned_to', null);
+        $ticket->setAttribute('taken_at', null);
+
+        if ($ticket->relationLoaded('assignedAdmin')) {
+            $ticket->setRelation('assignedAdmin', null);
+        }
+
+        return $ticket;
+    }
+
+    private function forbidOtherAdminTicketAccess(BugTicket $ticket, $viewer)
+    {
+        if (!$viewer || $viewer->role !== 'admin_it') {
+            return null;
+        }
+
+        if ($ticket->assigned_to && (int) $ticket->assigned_to !== (int) $viewer->id) {
+            return response()->json([
+                'error' => 'Forbidden',
+                'message' => 'Tiket ini milik akun admin lain dan tidak dapat diakses.',
+            ], 403);
+        }
+
+        if (!$ticket->assigned_to && $ticket->status === 'closed') {
+            return response()->json([
+                'error' => 'Forbidden',
+                'message' => 'Tiket yang sudah ditutup tidak dapat diakses.',
+            ], 403);
+        }
+
+        return null;
     }
 }

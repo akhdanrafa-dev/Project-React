@@ -401,8 +401,10 @@ function UserLaporanContent() {
                             <TableCell>
                               {ticket.assignedAdmin ? (
                                 <span className="text-sm">{ticket.assignedAdmin.name}</span>
-                              ) : (
+                              ) : ticket.status?.toLowerCase() === "open" ? (
                                 <Badge variant="secondary">Belum di handle</Badge>
+                              ) : (
+                                <Badge variant="outline">Riwayat privat</Badge>
                               )}
                             </TableCell>
                           </TableRow>
@@ -453,8 +455,10 @@ function UserLaporanContent() {
                             <TableCell>
                               {ticket.assignedAdmin ? (
                                 <span className="text-sm">{ticket.assignedAdmin.name}</span>
-                              ) : (
+                              ) : ticket.status?.toLowerCase() === "open" ? (
                                 <Badge variant="secondary">Belum di handle</Badge>
+                              ) : (
+                                <Badge variant="outline">Riwayat privat</Badge>
                               )}
                             </TableCell>
                             <TableCell>
@@ -535,8 +539,10 @@ function UserLaporanContent() {
                             <TableCell>
                               {ticket.assignedAdmin ? (
                                 <span className="text-sm">{ticket.assignedAdmin.name}</span>
-                              ) : (
+                              ) : ticket.status?.toLowerCase() === "open" ? (
                                 <Badge variant="secondary">Belum di handle</Badge>
+                              ) : (
+                                <Badge variant="outline">Riwayat privat</Badge>
                               )}
                             </TableCell>
                             <TableCell>

@@ -19,6 +19,9 @@ interface ChatMessage {
   id: number
   user_id: number
   message: string
+  image_url?: string | null
+  image_original_name?: string | null
+  image_size?: number | null
   is_read: boolean
   created_at: string
   user?: {
@@ -30,6 +33,7 @@ interface ChatMessage {
 
 interface BugTicket {
   id: number
+  ticket_number: string
   title: string
   description: string
   category: string

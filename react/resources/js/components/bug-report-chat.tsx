@@ -1,4 +1,4 @@
-import { Send, Loader2 } from "lucide-react"
+import { Send, Loader2, ImagePlus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -18,6 +18,9 @@ interface ChatMessage {
   id: number
   user_id: number
   message: string
+  image_url?: string | null
+  image_original_name?: string | null
+  image_size?: number | null
   is_read: boolean
   created_at: string
   user?: {
@@ -56,6 +59,14 @@ const getCsrfToken = () => {
   )
 }
 
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+
+const formatFileSize = (size: number) => {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export function BugReportChat({
   open,
   onOpenChange,
@@ -74,7 +85,10 @@ export function BugReportChat({
   const [markingAsResolved, setMarkingAsResolved] = useState(false)
   const [reopeningForUpdate, setReopeningForUpdate] = useState(false)
   const [localStatus, setLocalStatus] = useState("")
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
   const MAX_APPEALS = 3
@@ -98,6 +112,14 @@ export function BugReportChat({
   useEffect(() => {
     setLocalStatus(ticket?.status ?? "")
   }, [ticket?.id, ticket?.status])
+
+  useEffect(() => {
+    return () => {
+      if (selectedImagePreviewUrl) {
+        URL.revokeObjectURL(selectedImagePreviewUrl)
+      }
+    }
+  }, [selectedImagePreviewUrl])
 
   const fetchMessages = async () => {
     if (!ticket) return
@@ -138,35 +160,102 @@ export function BugReportChat({
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!newMessage.trim() || !ticket) return
+    const trimmedMessage = newMessage.trim()
+
+    if ((!trimmedMessage && !selectedImage) || !ticket) return
 
     setLoading(true)
 
     try {
+      const formData = new FormData()
+      if (trimmedMessage) {
+        formData.append("message", trimmedMessage)
+      }
+      if (selectedImage) {
+        formData.append("image", selectedImage)
+      }
+
       const response = await fetch(`/api/bug-tickets/${ticket.id}/messages`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           "X-CSRF-Token": getCsrfToken(),
           "Accept": "application/json",
         },
         credentials: "same-origin",
-        body: JSON.stringify({ message: newMessage }),
+        body: formData,
       })
 
-      if (!response.ok) throw new Error("Gagal mengirim pesan")
+      if (!response.ok) {
+        const error = await response.json().catch(() => null)
+        const validationMessage = error?.errors
+          ? (Object.values(error.errors).flat()[0] as string | undefined)
+          : undefined
+
+        throw new Error(validationMessage || error?.message || "Gagal mengirim pesan")
+      }
 
       const data = await response.json()
-      setMessages([...messages, data])
+      setMessages((prev) => [...prev, data])
       setNewMessage("")
-    } catch {
+      setSelectedImage(null)
+      if (selectedImagePreviewUrl) {
+        URL.revokeObjectURL(selectedImagePreviewUrl)
+      }
+      setSelectedImagePreviewUrl(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Gagal mengirim pesan",
+        description: error instanceof Error ? error.message : "Gagal mengirim pesan",
         variant: "destructive",
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSelectImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Format tidak didukung",
+        description: "File harus berupa gambar.",
+        variant: "destructive",
+      })
+      event.target.value = ""
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      toast({
+        title: "Ukuran terlalu besar",
+        description: "Maksimal ukuran gambar adalah 5MB.",
+        variant: "destructive",
+      })
+      event.target.value = ""
+      return
+    }
+
+    if (selectedImagePreviewUrl) {
+      URL.revokeObjectURL(selectedImagePreviewUrl)
+    }
+
+    setSelectedImage(file)
+    setSelectedImagePreviewUrl(URL.createObjectURL(file))
+  }
+
+  const clearSelectedImage = () => {
+    setSelectedImage(null)
+    if (selectedImagePreviewUrl) {
+      URL.revokeObjectURL(selectedImagePreviewUrl)
+    }
+    setSelectedImagePreviewUrl(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
     }
   }
 
@@ -511,7 +600,31 @@ export function BugReportChat({
                             : "bg-white dark:bg-slate-800 text-foreground border"
                         }`}
                       >
-                        <p className="text-sm break-words">{message.message}</p>
+                        {message.message ? (
+                          <p className="text-sm break-words">{message.message}</p>
+                        ) : null}
+                        {message.image_url ? (
+                          <a
+                            href={message.image_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`mt-2 block rounded-md border ${
+                              isCurrentUser ? "border-blue-300/60" : "border-slate-200"
+                            }`}
+                          >
+                            <img
+                              src={message.image_url}
+                              alt={message.image_original_name || "Lampiran chat"}
+                              className="max-h-64 w-full rounded-md object-contain bg-black/5"
+                              loading="lazy"
+                            />
+                          </a>
+                        ) : null}
+                        {message.image_original_name ? (
+                          <p className={`mt-1 text-[11px] ${isCurrentUser ? "text-blue-100" : "text-muted-foreground"}`}>
+                            {message.image_original_name}
+                          </p>
+                        ) : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {new Date(message.created_at).toLocaleTimeString('id-ID', {
@@ -657,31 +770,80 @@ export function BugReportChat({
                     </div>
                   </form>
                 ) : (
-                  <form onSubmit={handleSendMessage} className="flex gap-2">
-                    <Textarea
-                      placeholder="Ketik pesan Anda..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && e.ctrlKey) {
-                          handleSendMessage(e)
-                        }
-                      }}
-                      rows={2}
-                      className="resize-none"
-                    />
-                    <Button
-                      type="submit"
-                      size="icon"
-                      disabled={loading || !newMessage.trim()}
-                      className="self-end"
-                    >
-                      {loading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                    </Button>
+                  <form onSubmit={handleSendMessage} className="space-y-2">
+                    <div className="flex gap-2">
+                      <Textarea
+                        placeholder="Ketik pesan atau lampirkan screenshot..."
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && e.ctrlKey) {
+                            handleSendMessage(e)
+                          }
+                        }}
+                        rows={2}
+                        className="resize-none"
+                      />
+                      <div className="flex flex-col gap-2 self-end">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleSelectImage}
+                        />
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          onClick={() => fileInputRef.current?.click()}
+                          title="Lampirkan gambar"
+                        >
+                          <ImagePlus className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="submit"
+                          size="icon"
+                          disabled={loading || (!newMessage.trim() && !selectedImage)}
+                        >
+                          {loading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    {selectedImage ? (
+                      <div className="rounded-md border bg-muted/30 p-2">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-xs font-medium">
+                            {selectedImage.name} ({formatFileSize(selectedImage.size)})
+                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={clearSelectedImage}
+                            title="Hapus gambar"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {selectedImagePreviewUrl ? (
+                          <img
+                            src={selectedImagePreviewUrl}
+                            alt="Preview gambar"
+                            className="max-h-40 rounded-md object-contain"
+                          />
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">
+                        Batas ukuran gambar: 5MB.
+                      </p>
+                    )}
                   </form>
                 )}
               </>
@@ -692,3 +854,4 @@ export function BugReportChat({
     </Dialog>
   )
 }
+
