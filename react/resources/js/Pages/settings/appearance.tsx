@@ -2,6 +2,7 @@
 
 import { Head, usePage } from "@inertiajs/react"
 
+import AppearanceColorThemes from "@/components/appearance-color-themes"
 import AppearanceTabs from "@/components/appearance-tabs"
 import HeadingSmall from "@/components/heading-small"
 import { Separator } from "@/components/ui/separator"
@@ -30,8 +31,18 @@ export default function Appearance() {
 
             <Separator />
 
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Color Theme</h3>
+              <p className="text-sm text-muted-foreground">
+                Pilih kombinasi warna favorit. Tema ini berlaku untuk semua role di browser ini.
+              </p>
+              <AppearanceColorThemes />
+            </div>
+
+            <Separator />
+
             <p className="text-sm text-muted-foreground">
-              Default theme is light. Your preference will be saved.
+              Pengaturan mode dan warna akan otomatis disimpan.
             </p>
           </div>
         </div>

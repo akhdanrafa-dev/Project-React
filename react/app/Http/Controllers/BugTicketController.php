@@ -130,6 +130,7 @@ class BugTicketController extends Controller
             }
 
             $this->authorize('update', $bugTicket);
+            $previousStatus = $bugTicket->status;
 
             $validated = $request->validate([
                 'status' => 'sometimes|in:open,in_progress,resolved,closed,diproses kembali',
@@ -199,6 +200,21 @@ class BugTicketController extends Controller
             }
 
             $bugTicket->update($validated);
+
+            if (
+                isset($validated['status']) &&
+                in_array($validated['status'], ['resolved', 'closed'], true) &&
+                $previousStatus !== $validated['status'] &&
+                $this->isAdminCollaboratorOnTicket($bugTicket, (int) $user->id)
+            ) {
+                ChatMessage::create([
+                    'ticket_id' => $bugTicket->id,
+                    'user_id' => $user->id,
+                    'message' => "Tiket telah diselesaikan oleh admin {$user->name}",
+                    'is_read' => false,
+                ]);
+            }
+
             $bugTicket->load(['user', 'assignedAdmin', 'messages.user']);
             $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
 
@@ -922,6 +938,19 @@ class BugTicketController extends Controller
             $collaboratorQuery->whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
                 ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode((string) $adminId)]);
         });
+    }
+
+    private function isAdminCollaboratorOnTicket(BugTicket $ticket, int $userId): bool
+    {
+        if ((int) $ticket->assigned_to === $userId) {
+            return false;
+        }
+
+        $collaboratorIds = collect($ticket->collaborators ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return in_array($userId, $collaboratorIds, true);
     }
 
     private function sanitizeTakeHistoryCollectionForViewer($tickets, $viewer)

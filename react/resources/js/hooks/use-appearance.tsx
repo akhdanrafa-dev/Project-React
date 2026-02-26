@@ -2,9 +2,27 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 export type ResolvedAppearance = 'light' | 'dark';
 export type Appearance = ResolvedAppearance | 'system';
+export const COLOR_THEMES = [
+    'default',
+    'ocean',
+    'sunset',
+    'forest',
+    'ember',
+    'slate',
+    'aurora',
+    'berry',
+    'cobalt',
+    'citrus',
+    'orchid',
+    'sand',
+    'ice',
+    'graphite',
+] as const;
+export type ColorTheme = (typeof COLOR_THEMES)[number];
 
 const listeners = new Set<() => void>();
 let currentAppearance: Appearance = 'light';
+let currentColorTheme: ColorTheme = 'default';
 
 const prefersDark = (): boolean => {
     if (typeof window === 'undefined') return false;
@@ -24,6 +42,17 @@ const getStoredAppearance = (): Appearance => {
     return (localStorage.getItem('appearance') as Appearance) || 'light';
 };
 
+const isColorTheme = (value: string | null): value is ColorTheme => {
+    return !!value && COLOR_THEMES.includes(value as ColorTheme);
+};
+
+const getStoredColorTheme = (): ColorTheme => {
+    if (typeof window === 'undefined') return 'default';
+
+    const storedTheme = localStorage.getItem('color_theme');
+    return isColorTheme(storedTheme) ? storedTheme : 'default';
+};
+
 const isDarkMode = (appearance: Appearance): boolean => {
     return appearance === 'dark' || (appearance === 'system' && prefersDark());
 };
@@ -35,6 +64,12 @@ const applyTheme = (appearance: Appearance): void => {
 
     document.documentElement.classList.toggle('dark', isDark);
     document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+};
+
+const applyColorTheme = (colorTheme: ColorTheme): void => {
+    if (typeof document === 'undefined') return;
+
+    document.documentElement.setAttribute('data-color-theme', colorTheme);
 };
 
 const subscribe = (callback: () => void) => {
@@ -63,9 +98,17 @@ export function initializeTheme(): void {
         localStorage.setItem('appearance', 'light');
         setCookie('appearance', 'light');
     }
+    if (!localStorage.getItem('color_theme')) {
+        localStorage.setItem('color_theme', 'default');
+        setCookie('color_theme', 'default');
+    }
 
     currentAppearance = getStoredAppearance();
+    currentColorTheme = getStoredColorTheme();
+    setCookie('appearance', currentAppearance);
+    setCookie('color_theme', currentColorTheme);
     applyTheme(currentAppearance);
+    applyColorTheme(currentColorTheme);
 
     // Set up system theme change listener
     mediaQuery()?.addEventListener('change', handleSystemThemeChange);
@@ -76,6 +119,11 @@ export function useAppearance() {
         subscribe,
         () => currentAppearance,
         () => 'light',
+    );
+    const colorTheme: ColorTheme = useSyncExternalStore(
+        subscribe,
+        () => currentColorTheme,
+        () => 'default',
     );
 
     const resolvedAppearance: ResolvedAppearance = useMemo(
@@ -96,5 +144,21 @@ export function useAppearance() {
         notify();
     }, []);
 
-    return { appearance, resolvedAppearance, updateAppearance } as const;
+    const updateColorTheme = useCallback((theme: ColorTheme): void => {
+        currentColorTheme = theme;
+
+        localStorage.setItem('color_theme', theme);
+        setCookie('color_theme', theme);
+
+        applyColorTheme(theme);
+        notify();
+    }, []);
+
+    return {
+        appearance,
+        resolvedAppearance,
+        updateAppearance,
+        colorTheme,
+        updateColorTheme,
+    } as const;
 }
