@@ -105,24 +105,31 @@ class BugTicket extends Model
 
     public function addCollaborator($userId)
     {
-        if (!$this->collaborators) {
-            $this->collaborators = [];
+        $userId = (int) $userId;
+        if ($userId <= 0) {
+            return $this;
         }
 
-        if (!in_array($userId, $this->collaborators)) {
-            $this->collaborators = array_merge($this->collaborators, [$userId]);
+        $collaborators = is_array($this->collaborators) ? $this->collaborators : [];
+        $collaborators = array_values(array_unique(array_map('intval', $collaborators)));
+
+        if (!in_array($userId, $collaborators, true)) {
+            $collaborators[] = $userId;
         }
+
+        $this->collaborators = $collaborators;
 
         return $this;
     }
 
     public function removeCollaborator($userId)
     {
+        $userId = (int) $userId;
         if ($this->collaborators && is_array($this->collaborators)) {
-            $this->collaborators = array_filter($this->collaborators, function ($id) use ($userId) {
-                return $id != $userId;
-            });
-            $this->collaborators = array_values($this->collaborators);
+            $collaborators = array_values(array_unique(array_map('intval', $this->collaborators)));
+            $this->collaborators = array_values(array_filter($collaborators, function ($id) use ($userId) {
+                return $id !== $userId;
+            }));
         }
 
         return $this;

@@ -78,6 +78,100 @@ const getCsrfToken = () => {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
 }
 
+const updateCsrfToken = (newToken: string) => {
+  const metaTag = document.querySelector('meta[name="csrf-token"]')
+  if (metaTag && newToken) {
+    metaTag.setAttribute('content', newToken)
+  }
+}
+
+const getCookie = (name: string) => {
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) {
+    return parts.pop()?.split(';').shift() || ''
+  }
+  return ''
+}
+
+const getXsrfTokenFromCookie = () => {
+  const raw = getCookie('XSRF-TOKEN')
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
+const syncCsrfTokenFromResponse = (response: Response) => {
+  const nextToken =
+    response.headers.get('X-CSRF-Token') || response.headers.get('x-csrf-token')
+  if (nextToken) {
+    updateCsrfToken(nextToken)
+  }
+}
+
+const ensureCsrfCookie = async () => {
+  await fetch('/sanctum/csrf-cookie', {
+    method: 'GET',
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    cache: 'no-store',
+  })
+}
+
+const buildCsrfHeaders = (headers?: HeadersInit) => {
+  const merged = new Headers(headers || {})
+  const csrfToken = getCsrfToken()
+  const xsrfToken = getXsrfTokenFromCookie()
+
+  if (csrfToken) {
+    merged.set('X-CSRF-TOKEN', csrfToken)
+  }
+  if (xsrfToken) {
+    merged.set('X-XSRF-TOKEN', xsrfToken)
+  }
+  if (!merged.has('X-Requested-With')) {
+    merged.set('X-Requested-With', 'XMLHttpRequest')
+  }
+
+  return merged
+}
+
+const fetchWithCsrfRetry = async (
+  url: string,
+  init: RequestInit = {},
+  allowRetry = true,
+): Promise<Response> => {
+  const requestInit: RequestInit = {
+    ...init,
+    credentials: init.credentials || 'same-origin',
+    headers: buildCsrfHeaders(init.headers),
+  }
+
+  let response = await fetch(url, requestInit)
+  syncCsrfTokenFromResponse(response)
+
+  if (response.status === 419 && allowRetry) {
+    try {
+      await ensureCsrfCookie()
+    } catch {
+      // Continue retry path with available token sources.
+    }
+    response = await fetch(url, {
+      ...init,
+      credentials: init.credentials || 'same-origin',
+      headers: buildCsrfHeaders(init.headers),
+    })
+    syncCsrfTokenFromResponse(response)
+  }
+
+  return response
+}
+
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 
 const formatFileSize = (size: number) => {
@@ -141,6 +235,29 @@ export default function AdminITChats() {
       clearInterval(listInterval)
     }
   }, [currentUserId, selectedTicketId])
+
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      fetchTickets(true)
+      if (selectedTicketId) {
+        fetchTicketDetails(selectedTicketId)
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshOnFocus()
+      }
+    }
+
+    window.addEventListener('focus', refreshOnFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', refreshOnFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [selectedTicketId])
 
   useEffect(() => {
     const currentTicketId = selectedTicket?.id ?? null
@@ -220,7 +337,9 @@ export default function AdminITChats() {
           Accept: 'application/json',
         },
         credentials: 'same-origin',
+        cache: 'no-store',
       })
+      syncCsrfTokenFromResponse(response)
       if (!response.ok) throw new Error('Gagal mengambil tiket')
 
       const data: Ticket[] = await response.json()
@@ -260,7 +379,9 @@ export default function AdminITChats() {
           Accept: 'application/json',
         },
         credentials: 'same-origin',
+        cache: 'no-store',
       })
+      syncCsrfTokenFromResponse(response)
       if (!response.ok) throw new Error('Gagal mengambil detail tiket')
       const data: Ticket = normalizeTicket(await response.json())
 
@@ -272,11 +393,8 @@ export default function AdminITChats() {
       }
 
       setSelectedTicket(data)
-      await fetch(`/api/bug-tickets/${ticketId}/messages/mark-all-as-read`, {
+      await fetchWithCsrfRetry(`/api/bug-tickets/${ticketId}/messages/mark-all-as-read`, {
         method: 'PATCH',
-        headers: {
-          'X-CSRF-Token': getCsrfToken(),
-        },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
@@ -292,7 +410,9 @@ export default function AdminITChats() {
           Accept: 'application/json',
         },
         credentials: 'same-origin',
+        cache: 'no-store',
       })
+      syncCsrfTokenFromResponse(response)
       if (!response.ok) {
         console.error('Failed to fetch admin list:', response.status)
         return
@@ -314,7 +434,9 @@ export default function AdminITChats() {
           Accept: 'application/json',
         },
         credentials: 'same-origin',
+        cache: 'no-store',
       })
+      syncCsrfTokenFromResponse(response)
       if (response.ok) {
         const data = await response.json()
         setCollaboratorsDetails(data.collaborators || [])
@@ -331,7 +453,9 @@ export default function AdminITChats() {
           Accept: 'application/json',
         },
         credentials: 'same-origin',
+        cache: 'no-store',
       })
+      syncCsrfTokenFromResponse(response)
       if (!response.ok) throw new Error('Gagal mengambil pesan')
       const newMessages: ChatMessage[] = await response.json()
 
@@ -372,13 +496,11 @@ export default function AdminITChats() {
         formData.append('image', selectedImage)
       }
 
-      const response = await fetch(`/api/bug-tickets/${selectedTicketId}/messages`, {
+      const response = await fetchWithCsrfRetry(`/api/bug-tickets/${selectedTicketId}/messages`, {
         method: 'POST',
         headers: {
-          'X-CSRF-Token': getCsrfToken(),
           Accept: 'application/json',
         },
-        credentials: 'same-origin',
         body: formData,
       })
 
@@ -443,36 +565,30 @@ export default function AdminITChats() {
     }
   }
 
+  const refreshTicketViews = async (ticketId: number, includeCollaborators = false) => {
+    await fetchTicketDetails(ticketId)
+    await fetchTickets(true)
+    if (includeCollaborators) {
+      await fetchCollaboratorsDetails(ticketId)
+    }
+  }
+
   const handleTakeTicket = async () => {
     if (!selectedTicket || !currentUserId) return
 
     try {
       const ticketId = selectedTicket.id
-      const response = await fetch(`/api/bug-tickets/${ticketId}/take`, {
+      const response = await fetchWithCsrfRetry(`/api/bug-tickets/${ticketId}/take`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': getCsrfToken(),
           Accept: 'application/json',
         },
-        credentials: 'same-origin',
         body: JSON.stringify({ assigned_to: currentUserId }),
       })
 
       if (!response.ok) throw new Error('Gagal mengambil tiket')
-      await fetchTicketDetails(ticketId)
-      setTickets(prev =>
-        prev.map(ticket =>
-          ticket.id === ticketId
-            ? {
-              ...ticket,
-              status: 'in_progress',
-              assigned_to: currentUserId,
-              assignedAdmin: selectedTicket.assignedAdmin ?? ticket.assignedAdmin ?? null,
-            }
-            : ticket,
-        ),
-      )
+      await refreshTicketViews(ticketId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
     }
@@ -483,24 +599,17 @@ export default function AdminITChats() {
 
     try {
       const ticketId = selectedTicket.id
-      const response = await fetch(`/api/bug-tickets/${ticketId}`, {
+      const response = await fetchWithCsrfRetry(`/api/bug-tickets/${ticketId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': getCsrfToken(),
           Accept: 'application/json',
         },
-        credentials: 'same-origin',
         body: JSON.stringify({ status: 'resolved' }),
       })
 
       if (!response.ok) throw new Error('Gagal mengubah status tiket')
-      await fetchTicketDetails(ticketId)
-      setTickets(prev =>
-        prev.map(ticket =>
-          ticket.id === ticketId ? { ...ticket, status: 'resolved' } : ticket,
-        ),
-      )
+      await refreshTicketViews(ticketId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
     }
@@ -520,14 +629,12 @@ export default function AdminITChats() {
 
     setIsInvitingCollaborator(true)
     try {
-      const response = await fetch(`/api/bug-tickets/${selectedTicket.id}/collaborators/invite`, {
+      const response = await fetchWithCsrfRetry(`/api/bug-tickets/${selectedTicket.id}/collaborators/invite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': getCsrfToken(),
           Accept: 'application/json',
         },
-        credentials: 'same-origin',
         body: JSON.stringify({ collaborator_id: selectedCollaborator }),
       })
 
@@ -536,8 +643,7 @@ export default function AdminITChats() {
         throw new Error(errorData.message || 'Gagal menambah kolaborator')
       }
 
-      await fetchTicketDetails(selectedTicket.id)
-      await fetchCollaboratorsDetails(selectedTicket.id)
+      await refreshTicketViews(selectedTicket.id, true)
       setSelectedCollaborator(null)
       setError(null)
     } catch (err) {
@@ -557,14 +663,12 @@ export default function AdminITChats() {
     }
 
     try {
-      const response = await fetch(`/api/bug-tickets/${selectedTicket.id}/collaborators/remove`, {
+      const response = await fetchWithCsrfRetry(`/api/bug-tickets/${selectedTicket.id}/collaborators/remove`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': getCsrfToken(),
           Accept: 'application/json',
         },
-        credentials: 'same-origin',
         body: JSON.stringify({ collaborator_id: collaboratorId }),
       })
 
@@ -573,8 +677,7 @@ export default function AdminITChats() {
         throw new Error(errorData.message || 'Gagal menghapus kolaborator')
       }
 
-      await fetchTicketDetails(selectedTicket.id)
-      await fetchCollaboratorsDetails(selectedTicket.id)
+      await refreshTicketViews(selectedTicket.id, true)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal menghapus kolaborator')
@@ -624,9 +727,21 @@ export default function AdminITChats() {
     }
   }
 
+  const isCurrentAdminCollaborator = (ticket: Pick<Ticket, 'status' | 'assigned_to' | 'collaboration_type' | 'collaborators'>) => {
+    if (!currentUserId) return false
+    if (ticket.assigned_to === currentUserId) return false
+    if (ticket.collaboration_type !== 'collab') return false
+    if (!Array.isArray(ticket.collaborators)) return false
+
+    return ticket.collaborators.map(Number).includes(Number(currentUserId))
+  }
+
   const selectedTicketUserImages = (selectedTicket?.messages ?? []).filter(
     (msg) => msg.user?.role === 'user' && !!msg.image_url,
   )
+  const canResolveSelectedTicket =
+    selectedTicket?.status === 'in_progress' &&
+    (selectedTicket.assigned_to === currentUserId || isCurrentAdminCollaborator(selectedTicket))
   const isSelectedTicketChatLocked = selectedTicket
     ? ['resolved', 'closed'].includes(selectedTicket.status)
     : true
@@ -703,6 +818,11 @@ export default function AdminITChats() {
                         <Badge className={getStatusColor(ticket.status)}>
                           {getStatusLabel(ticket.status)}
                         </Badge>
+                        {isCurrentAdminCollaborator(ticket) && (
+                          <Badge variant="outline" className="border-cyan-300 bg-cyan-50 text-cyan-700">
+                            Collab
+                          </Badge>
+                        )}
                         <Badge className={getPriorityColor(ticket.priority)}>
                           Prioritas: {ticket.priority}
                         </Badge>
@@ -863,13 +983,9 @@ export default function AdminITChats() {
                 ) : null}
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs text-muted-foreground">
-                    {selectedTicket?.status === 'open'
-                      ? 'Status: Terbuka'
-                      : selectedTicket?.status === 'in_progress'
-                        ? 'Status: Dalam Proses'
-                        : selectedTicket
-                          ? `Status: ${getStatusLabel(selectedTicket.status)}`
-                          : 'Pilih tiket untuk mengirim pesan'}
+                    {selectedTicket
+                      ? `Status: ${getStatusLabel(selectedTicket.status)}${isCurrentAdminCollaborator(selectedTicket) ? ' (Collab)' : ''}`
+                      : 'Pilih tiket untuk mengirim pesan'}
                   </div>
                   <div className="flex gap-2">
                     {selectedTicket?.status === 'open' && (
@@ -894,9 +1010,16 @@ export default function AdminITChats() {
                         </Button>
                       </>
                     )}
-                    {selectedTicket?.status === 'in_progress' && 
+                    {selectedTicket?.status === 'in_progress' &&
                      selectedTicket.assigned_to !== currentUserId && (
-                      <Button size="sm" variant="ghost" type="button" onClick={handleResolveTicket} disabled title="Hanya pemilik tiket yang dapat menyelesaikan">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        type="button"
+                        onClick={handleResolveTicket}
+                        disabled={!canResolveSelectedTicket}
+                        title={canResolveSelectedTicket ? undefined : 'Hanya kolaborator pada tiket ini yang dapat menyelesaikan'}
+                      >
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Tandai Terselesaikan
                       </Button>
@@ -1096,5 +1219,3 @@ export default function AdminITChats() {
     </AdminITLayout>
   )
 }
-
-

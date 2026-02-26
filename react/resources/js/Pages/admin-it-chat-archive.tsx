@@ -47,6 +47,9 @@ interface Ticket {
   priority: string
   created_at: string
   resolved_at?: string | null
+  assigned_to?: number | null
+  collaboration_type?: string
+  collaborators?: number[] | null
   user: {
     id: number
     name: string
@@ -56,6 +59,8 @@ interface Ticket {
 }
 
 export default function AdminITChatArchive() {
+  const { auth } = usePage<SharedData>().props
+  const currentUserId = auth?.user?.id ?? 0
   const { toast } = useToast()
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null)
@@ -223,6 +228,15 @@ export default function AdminITChatArchive() {
     }
   }
 
+  const isCurrentAdminCollaborator = (ticket: Pick<Ticket, 'assigned_to' | 'collaboration_type' | 'collaborators'>) => {
+    if (!currentUserId) return false
+    if (ticket.assigned_to === currentUserId) return false
+    if (ticket.collaboration_type !== 'collab') return false
+    if (!Array.isArray(ticket.collaborators)) return false
+
+    return ticket.collaborators.map(Number).includes(Number(currentUserId))
+  }
+
   const renderTicketItem = (ticket: Ticket) => {
     return (
       <div
@@ -232,12 +246,17 @@ export default function AdminITChatArchive() {
       >
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-semibold truncate">
-            {ticket.ticket_number || '#'} • {ticket.title}
+            {ticket.ticket_number || '#'} - {ticket.title}
           </p>
           <div className="flex items-center gap-2">
             <Badge className={ticket.status === 'closed' ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'}>
               {ticket.status === 'resolved' ? 'Terselesaikan' : 'Ditutup'}
             </Badge>
+            {isCurrentAdminCollaborator(ticket) && (
+              <Badge variant="outline" className="border-cyan-300 bg-cyan-50 text-cyan-700">
+                Collab
+              </Badge>
+            )}
             <Button
               size="sm"
               variant="ghost"
@@ -335,8 +354,20 @@ export default function AdminITChatArchive() {
                     {selectedTicket ? selectedTicket.title : 'Pilih tiket arsip untuk melihat chat'}
                   </CardTitle>
                   <CardDescription className="text-sm text-muted-foreground">
-                    {selectedTicket ? `${selectedTicket.ticket_number} •` : 'Tidak ada tiket terpilih'}
+                    {selectedTicket ? `${selectedTicket.ticket_number} -` : 'Tidak ada tiket terpilih'}
                   </CardDescription>
+                  {selectedTicket && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Badge className={selectedTicket.status === 'closed' ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'}>
+                        {selectedTicket.status === 'resolved' ? 'Terselesaikan' : 'Ditutup'}
+                      </Badge>
+                      {isCurrentAdminCollaborator(selectedTicket) && (
+                        <Badge variant="outline" className="border-cyan-300 bg-cyan-50 text-cyan-700">
+                          Collab
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <Button variant="outline" size="sm" onClick={() => window.history.back()}>
                   Kembali
@@ -391,7 +422,7 @@ export default function AdminITChatArchive() {
 
               <div className="border-t p-4">
                 <p className="text-xs text-muted-foreground">
-                  Percakapan ini sudah diarsipkan—tidak bisa membalas lagi.
+                  Percakapan ini sudah diarsipkan - tidak bisa membalas lagi.
                 </p>
               </div>
             </div>
@@ -401,3 +432,4 @@ export default function AdminITChatArchive() {
     </AdminITLayout>
   )
 }
+

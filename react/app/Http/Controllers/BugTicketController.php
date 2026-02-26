@@ -33,9 +33,10 @@ class BugTicketController extends Controller
                                 ->where('status', '!=', 'closed');
                         })
                         // Or tickets assigned to this admin
-                        ->orWhere('assigned_to', $user->id)
-                        // Or tickets where this admin is a collaborator
-                        ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($user->id)]);
+                        ->orWhere('assigned_to', $user->id);
+
+                    // Or tickets where this admin is a collaborator
+                    $this->orWhereCollaboratorContains($query, (int) $user->id);
                 })
                 ->oldest()
                 ->get();
@@ -129,6 +130,7 @@ class BugTicketController extends Controller
             }
 
             $this->authorize('update', $bugTicket);
+            $previousStatus = $bugTicket->status;
 
             $validated = $request->validate([
                 'status' => 'sometimes|in:open,in_progress,resolved,closed,diproses kembali',
@@ -198,6 +200,21 @@ class BugTicketController extends Controller
             }
 
             $bugTicket->update($validated);
+
+            if (
+                isset($validated['status']) &&
+                in_array($validated['status'], ['resolved', 'closed'], true) &&
+                $previousStatus !== $validated['status'] &&
+                $this->isAdminCollaboratorOnTicket($bugTicket, (int) $user->id)
+            ) {
+                ChatMessage::create([
+                    'ticket_id' => $bugTicket->id,
+                    'user_id' => $user->id,
+                    'message' => "Tiket telah diselesaikan oleh admin {$user->name}",
+                    'is_read' => false,
+                ]);
+            }
+
             $bugTicket->load(['user', 'assignedAdmin', 'messages.user']);
             $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
 
@@ -317,6 +334,7 @@ class BugTicketController extends Controller
 
     public function getAdminStats($adminId)
     {
+        $adminId = (int) $adminId;
         $admin = \App\Models\User::find($adminId);
         
         if (!$admin || $admin->role !== 'admin_it') {
@@ -335,9 +353,8 @@ class BugTicketController extends Controller
         // Using JSON_CONTAINS for proper JSON array comparison in MySQL
         $getAdminTicketsQuery = function ($baseQuery) use ($adminId) {
             return $baseQuery->where(function ($query) use ($adminId) {
-                $query->where('assigned_to', $adminId)
-                    // Fix: Use JSON_CONTAINS for proper JSON array comparison in MySQL
-                    ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)]);
+                $query->where('assigned_to', $adminId);
+                $this->orWhereCollaboratorContains($query, $adminId);
             });
         };
 
@@ -369,7 +386,7 @@ class BugTicketController extends Controller
                 ->count();
 
             // Count tickets where admin is a collaborator
-            $collaboratedTickets = BugTicket::whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
+            $collaboratedTickets = $this->whereCollaboratorContains(BugTicket::query(), $adminId)
                 ->where(function ($query) use ($dateFilter) {
                     // For completed tickets, use resolved_at
                     $query->where(function ($q) use ($dateFilter) {
@@ -418,7 +435,7 @@ class BugTicketController extends Controller
             ->where('collaboration_type', 'collab')
             ->count();
             
-        $collaborationAsCollaborator = BugTicket::whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
+        $collaborationAsCollaborator = $this->whereCollaboratorContains(BugTicket::query(), $adminId)
             ->count();
             
         $collaborationCount = $collaborationAsOwner + $collaborationAsCollaborator;
@@ -444,9 +461,10 @@ class BugTicketController extends Controller
 
     private function calculateAverageResolutionTime($adminId)
     {
+        $adminId = (int) $adminId;
         $resolvedTickets = BugTicket::where(function ($query) use ($adminId) {
-                $query->where('assigned_to', $adminId)
-                    ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)]);
+                $query->where('assigned_to', $adminId);
+                $this->orWhereCollaboratorContains($query, $adminId);
             })
             ->whereNotNull('taken_at')
             ->whereNotNull('resolved_at')
@@ -470,8 +488,8 @@ class BugTicketController extends Controller
         $ranking = $admins->map(function ($admin) {
             // Query for tickets assigned or collaborated
             $baseTicketQuery = BugTicket::where(function ($query) use ($admin) {
-                $query->where('assigned_to', $admin->id)
-                    ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($admin->id)]);
+                $query->where('assigned_to', $admin->id);
+                $this->orWhereCollaboratorContains($query, (int) $admin->id);
             });
 
             $resolved = (clone $baseTicketQuery)
@@ -487,7 +505,7 @@ class BugTicketController extends Controller
                 ->where('collaboration_type', 'collab')
                 ->count();
                 
-            $collaborationAsCollaborator = BugTicket::whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($admin->id)])
+            $collaborationAsCollaborator = $this->whereCollaboratorContains(BugTicket::query(), (int) $admin->id)
                 ->count();
 
             return [
@@ -665,8 +683,8 @@ class BugTicketController extends Controller
             // Query for tickets assigned or collaborated
             $baseTicketQuery = function () use ($admin) {
                 return BugTicket::where(function ($query) use ($admin) {
-                    $query->where('assigned_to', $admin->id)
-                        ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($admin->id)]);
+                    $query->where('assigned_to', $admin->id);
+                    $this->orWhereCollaboratorContains($query, (int) $admin->id);
                 });
             };
 
@@ -904,6 +922,35 @@ class BugTicketController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function whereCollaboratorContains($query, int $adminId)
+    {
+        return $query->where(function ($collaboratorQuery) use ($adminId) {
+            $collaboratorQuery->whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
+                ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode((string) $adminId)]);
+        });
+    }
+
+    private function orWhereCollaboratorContains($query, int $adminId)
+    {
+        return $query->orWhere(function ($collaboratorQuery) use ($adminId) {
+            $collaboratorQuery->whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
+                ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode((string) $adminId)]);
+        });
+    }
+
+    private function isAdminCollaboratorOnTicket(BugTicket $ticket, int $userId): bool
+    {
+        if ((int) $ticket->assigned_to === $userId) {
+            return false;
+        }
+
+        $collaboratorIds = collect($ticket->collaborators ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return in_array($userId, $collaboratorIds, true);
     }
 
     private function sanitizeTakeHistoryCollectionForViewer($tickets, $viewer)

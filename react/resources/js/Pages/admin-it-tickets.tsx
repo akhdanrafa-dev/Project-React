@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react'
+import { Head, usePage } from '@inertiajs/react'
 import { AlertCircle, Clock, CheckCircle2, XCircle, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -34,6 +34,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import AdminITLayout from '@/layouts/app/AdminITLayout'
+import type { SharedData } from '@/types'
 
 interface Ticket {
   id: number
@@ -50,9 +51,13 @@ interface Ticket {
     email: string
   }
   assigned_to: number | null
+  collaboration_type?: string
+  collaborators?: number[] | null
 }
 
 export default function AdminITTickets() {
+  const { auth } = usePage<SharedData>().props
+  const currentUserId = auth?.user?.id ?? 0
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [filteredTickets, setFilteredTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,20 +66,50 @@ export default function AdminITTickets() {
   const [activeTab, setActiveTab] = useState('open')
 
   useEffect(() => {
-    const fetchTickets = async () => {
+    let isMounted = true
+
+    const fetchTickets = async (isSilent = false) => {
       try {
-        const response = await fetch('/api/bug-tickets')
+        if (!isSilent) {
+          setLoading(true)
+        }
+        const response = await fetch('/api/bug-tickets', {
+          cache: 'no-store',
+        })
         if (!response.ok) throw new Error('Failed to fetch tickets')
         const data = await response.json()
-        setTickets(data)
+        if (isMounted) {
+          setTickets(data)
+          setError(null)
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred')
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'An error occurred')
+        }
       } finally {
-        setLoading(false)
+        if (isMounted && !isSilent) {
+          setLoading(false)
+        }
       }
     }
 
     fetchTickets()
+
+    const interval = setInterval(() => {
+      fetchTickets(true)
+    }, 15000)
+
+    const handleFocus = () => {
+      fetchTickets(true)
+    }
+
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [])
 
   useEffect(() => {
@@ -160,6 +195,15 @@ export default function AdminITTickets() {
     }
   }
 
+  const isCurrentAdminCollaborator = (ticket: Ticket) => {
+    if (!currentUserId) return false
+    if (ticket.assigned_to === currentUserId) return false
+    if (ticket.collaboration_type !== 'collab') return false
+    if (!Array.isArray(ticket.collaborators)) return false
+
+    return ticket.collaborators.map(Number).includes(Number(currentUserId))
+  }
+
   const TicketTable = ({ data }: { data: Ticket[] }) => (
     <div className="overflow-x-auto">
       <Table>
@@ -202,10 +246,17 @@ export default function AdminITTickets() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Badge className={`${getStatusColor(ticket.status)} flex w-fit gap-2`}>
-                    {getStatusIcon(ticket.status)}
-                    {getStatusLabel(ticket.status)}
-                  </Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge className={`${getStatusColor(ticket.status)} flex w-fit gap-2`}>
+                      {getStatusIcon(ticket.status)}
+                      {getStatusLabel(ticket.status)}
+                    </Badge>
+                    {isCurrentAdminCollaborator(ticket) && (
+                      <Badge variant="outline" className="border-cyan-300 bg-cyan-50 text-cyan-700">
+                        Collab
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div>
