@@ -163,6 +163,17 @@ class BugTicketController extends Controller
                 ], 403);
             }
 
+            if (
+                array_key_exists('difficulty_level', $validated) &&
+                $user->role === 'developer' &&
+                in_array($bugTicket->status, ['in_progress', 'resolved'], true)
+            ) {
+                return response()->json([
+                    'error' => 'Invalid difficulty update',
+                    'message' => 'Tingkat kesulitan tidak dapat diubah saat tiket sudah diproses atau terselesaikan.',
+                ], 422);
+            }
+
             if (array_key_exists('status', $validated)) {
                 $requestedStatus = $validated['status'];
                 $isTicketOwner = (int) $bugTicket->user_id === (int) $user->id;
@@ -963,6 +974,11 @@ class BugTicketController extends Controller
     private function sanitizeTakeHistoryForViewer(BugTicket $ticket, $viewer): BugTicket
     {
         if (!$viewer) {
+            return $ticket;
+        }
+
+        // Developer membutuhkan visibilitas penuh untuk monitoring laporan.
+        if (($viewer->role ?? null) === 'developer') {
             return $ticket;
         }
 

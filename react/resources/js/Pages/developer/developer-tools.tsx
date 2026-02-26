@@ -1,422 +1,690 @@
-import { Loader2 } from "lucide-react"
-import { RefreshCw } from "lucide-react"
-import { useState, useEffect } from "react"
+import { ChevronDown, Loader2, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { Badge } from "@/components/ui/badge"
+import { Badge } from '@/components/ui/badge';
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-} from "@/components/ui/breadcrumb"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbLink,
+    BreadcrumbList,
+} from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { useToast } from "@/components/ui/use-toast"
-import RootLayout from "@/layouts/app/RootLayouts"
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { SidebarTrigger } from '@/components/ui/sidebar-trigger';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import { useToast } from '@/components/ui/use-toast';
+import RootLayout from '@/layouts/app/RootLayouts';
+
+type AdminBrief = {
+    id: number;
+    name: string;
+};
+
+type CollaboratorDetail = {
+    id: number;
+    name: string;
+    email?: string;
+};
 
 interface BugTicket {
-  id: number
-  ticket_number: string
-  title: string
-  priority: string
-  difficulty_level?: string
-  status: string
-  user_id: number
-  assigned_to?: number | null
-  created_at: string
-  user?: {
-    id: number
-    name: string
-    email: string
-    phone?: string
-  }
-  assignedAdmin?: {
-    id: number
-    name: string
-  } | null
-  assigned_admin?: {
-    id: number
-    name: string
-  } | null
+    id: number;
+    ticket_number: string;
+    title: string;
+    priority: string;
+    difficulty_level?: string;
+    status: string;
+    user_id: number;
+    assigned_to?: number | null;
+    created_at: string;
+    collaboration_type?: string | null;
+    collaborators?: Array<number | string> | null;
+    collaborators_details?: CollaboratorDetail[] | null;
+    user?: {
+        id: number;
+        name: string;
+        email: string;
+        phone?: string;
+    };
+    assignedAdmin?: AdminBrief | null;
+    assigned_admin?: AdminBrief | null;
 }
-
-const DIFFICULTY_OPTIONS = [
-  { value: "easy", label: "Mudah" },
-  { value: "medium", label: "Sedang" },
-  { value: "hard", label: "Sulit" },
-]
 
 type ApiBugTicket = BugTicket & {
-  assigned_admin?: BugTicket["assignedAdmin"]
-}
+    assigned_admin?: BugTicket['assignedAdmin'];
+};
+
+const DIFFICULTY_OPTIONS = [
+    { value: 'easy', label: 'Mudah' },
+    { value: 'medium', label: 'Sedang' },
+    { value: 'hard', label: 'Sulit' },
+];
 
 const normalizeTicket = (ticket: ApiBugTicket): BugTicket => ({
-  ...ticket,
-  assignedAdmin: ticket.assignedAdmin ?? ticket.assigned_admin ?? null,
-})
+    ...ticket,
+    assignedAdmin: ticket.assignedAdmin ?? ticket.assigned_admin ?? null,
+});
 
-const isHandledByAdmin = (ticket: BugTicket) =>
-  Boolean(ticket.assignedAdmin?.id || ticket.assignedAdmin?.name)
+const normalizeStatus = (status?: string) => status?.toLowerCase() ?? '';
+
+const isDifficultyLocked = (status: string) =>
+    ['in_progress', 'resolved'].includes(normalizeStatus(status));
+
+const isCollabTicket = (ticket: BugTicket) =>
+    normalizeStatus(ticket.collaboration_type ?? '') === 'collab';
 
 export default function DeveloperToolsPage() {
-  return (
-    <RootLayout hideFloatingChat>
-      <DeveloperToolsContent />
-    </RootLayout>
-  )
+    return (
+        <RootLayout hideFloatingChat>
+            <DeveloperToolsContent />
+        </RootLayout>
+    );
 }
 
 function DeveloperToolsContent() {
-  const { toast } = useToast()
-  const [tickets, setTickets] = useState<BugTicket[]>([])
-  const [loading, setLoading] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [updatingTicketId, setUpdatingTicketId] = useState<number | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
+    const { toast } = useToast();
+    const [tickets, setTickets] = useState<BugTicket[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [updatingTicketId, setUpdatingTicketId] = useState<number | null>(
+        null,
+    );
+    const [collaboratorsByTicket, setCollaboratorsByTicket] = useState<
+        Record<number, CollaboratorDetail[]>
+    >({});
+    const [loadingCollaboratorsTicketId, setLoadingCollaboratorsTicketId] =
+        useState<number | null>(null);
 
-  useEffect(() => {
-    fetchTickets()
+    const fetchTickets = async () => {
+        try {
+            const response = await fetch('/api/bug-tickets');
+            if (!response.ok) throw new Error('Gagal mengambil ticket');
 
-    const interval = setInterval(() => {
-      fetchTickets()
-    }, 3000)
+            const data = await response.json();
+            const normalizedTickets = Array.isArray(data)
+                ? data.map((ticket: ApiBugTicket) => normalizeTicket(ticket))
+                : [];
 
-    return () => clearInterval(interval)
-  }, [])
+            setTickets(normalizedTickets);
+        } catch (error) {
+            console.error('Error fetching tickets:', error);
+            toast({
+                title: 'Error',
+                description: 'Gagal mengambil data ticket',
+                variant: 'destructive',
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
 
-  const fetchTickets = async () => {
-    try {
-      const response = await fetch("/api/bug-tickets")
-      if (!response.ok) throw new Error("Gagal mengambil ticket")
+    useEffect(() => {
+        void fetchTickets();
 
-      const data = await response.json()
-      console.log("Fetched tickets with assignedAdmin:", data)
-      const normalizedTickets = Array.isArray(data)
-        ? data.map((ticket: ApiBugTicket) => normalizeTicket(ticket))
-        : []
-      setTickets(normalizedTickets)
-      setRefreshKey(prev => prev + 1)
-      setLoading(false)
-    } catch (error) {
-      console.error("Error fetching tickets:", error)
-      toast({
-        title: "Error",
-        description: "Gagal mengambil data ticket",
-        variant: "destructive",
-      })
-      setLoading(false)
-    }
-  }
+        const interval = setInterval(() => {
+            void fetchTickets();
+        }, 3000);
 
-  const handleManualRefresh = async () => {
-    setIsRefreshing(true)
-    await fetchTickets()
-    setIsRefreshing(false)
-    toast({
-      title: "Sukses",
-      description: "Data telah diperbarui",
-    })
-  }
+        return () => clearInterval(interval);
+    }, []);
 
-  const getPriorityValue = (priority: string) => {
-    switch (priority?.toLowerCase()) {
-      case "high":
-        return 3
-      case "medium":
-        return 2
-      case "low":
-        return 1
-      default:
-        return 0
-    }
-  }
+    const handleManualRefresh = async () => {
+        setIsRefreshing(true);
+        await fetchTickets();
+        setIsRefreshing(false);
 
-  const getPriorityBadge = (priority: string) => {
-    switch (priority?.toLowerCase()) {
-      case "high":
-        return <Badge variant="destructive">Tinggi</Badge>
-      case "medium":
-        return <Badge variant="default">Sedang</Badge>
-      case "low":
-        return <Badge variant="secondary">Rendah</Badge>
-      default:
-        return <Badge>{priority}</Badge>
-    }
-  }
+        toast({
+            title: 'Sukses',
+            description: 'Data telah diperbarui',
+        });
+    };
 
-  const getStatusBadge = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case "open":
-        return <Badge variant="outline">Terbuka</Badge>
-      case "in_progress":
-        return <Badge className="bg-blue-500">Dalam Proses</Badge>
-      case "resolved":
-        return <Badge className="bg-green-500">Selesai</Badge>
-      case "closed":
-        return <Badge className="bg-gray-500">Ditutup</Badge>
-      default:
-        return <Badge>{status}</Badge>
-    }
-  }
+    const getPriorityValue = (priority: string) => {
+        switch (priority?.toLowerCase()) {
+            case 'high':
+                return 3;
+            case 'medium':
+                return 2;
+            case 'low':
+                return 1;
+            default:
+                return 0;
+        }
+    };
 
-  const getDifficultyBadge = (difficulty?: string) => {
-    switch (difficulty?.toLowerCase()) {
-      case "easy":
-        return <Badge className="bg-green-100 text-green-800">Mudah</Badge>
-      case "medium":
-        return <Badge className="bg-yellow-100 text-yellow-800">Sedang</Badge>
-      case "hard":
-        return <Badge className="bg-red-100 text-red-800">Sulit</Badge>
-      default:
-        return <Badge className="bg-gray-100 text-gray-800">Sedang</Badge>
-    }
-  }
+    const getPriorityBadge = (priority: string) => {
+        switch (priority?.toLowerCase()) {
+            case 'high':
+                return <Badge variant="destructive">Tinggi</Badge>;
+            case 'medium':
+                return <Badge variant="default">Sedang</Badge>;
+            case 'low':
+                return <Badge variant="secondary">Rendah</Badge>;
+            default:
+                return <Badge>{priority}</Badge>;
+        }
+    };
 
-  const getCsrfToken = () => {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-  }
+    const getStatusBadge = (status: string) => {
+        switch (status?.toLowerCase()) {
+            case 'open':
+                return <Badge variant="outline">Terbuka</Badge>;
+            case 'in_progress':
+                return <Badge className="bg-blue-500">Dalam Proses</Badge>;
+            case 'resolved':
+                return <Badge className="bg-green-500">Terselesaikan</Badge>;
+            case 'closed':
+                return <Badge className="bg-gray-500">Ditutup</Badge>;
+            default:
+                return <Badge>{status}</Badge>;
+        }
+    };
 
-  const updateDifficulty = async (ticketId: number, difficulty: string) => {
-    const selectedTicket = tickets.find((ticket) => ticket.id === ticketId)
-    if (selectedTicket && isHandledByAdmin(selectedTicket)) {
-      toast({
-        title: "Tidak Diizinkan",
-        description:
-          "Tingkat kesulitan tidak dapat diubah karena laporan sudah di-handle admin IT",
-        variant: "destructive",
-      })
-      return
-    }
+    const getCsrfToken = () => {
+        return (
+            document
+                .querySelector("meta[name='csrf-token']")
+                ?.getAttribute('content') || ''
+        );
+    };
 
-    setUpdatingTicketId(ticketId)
+    const updateDifficulty = async (ticketId: number, difficulty: string) => {
+        const selectedTicket = tickets.find((ticket) => ticket.id === ticketId);
 
-    try {
-      const csrfToken = getCsrfToken()
-      
-      // Prepare body - jika difficulty kosong, kirim sebagai null
-      const bodyData: any = {}
-      if (difficulty) {
-        bodyData.difficulty_level = difficulty
-      } else {
-        bodyData.difficulty_level = null
-      }
-      
-      const response = await fetch(`/api/bug-tickets/${ticketId}`, {
-        method: "PATCH",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-CSRF-Token": csrfToken || "",
-        },
-        body: JSON.stringify(bodyData),
-      })
+        if (selectedTicket && isDifficultyLocked(selectedTicket.status)) {
+            toast({
+                title: 'Tidak Diizinkan',
+                description:
+                    'Tingkat kesulitan tidak bisa diubah saat tiket sudah diproses atau terselesaikan',
+                variant: 'destructive',
+            });
+            return;
+        }
 
-      const contentType = response.headers.get("content-type") ?? ""
-      const payload = contentType.includes("application/json")
-        ? await response.json()
-        : { message: await response.text() }
+        setUpdatingTicketId(ticketId);
 
-      if (!response.ok) {
-        const errorMsg = payload?.message || payload?.error || `Error ${response.status}`
-        throw new Error(errorMsg)
-      }
+        try {
+            const csrfToken = getCsrfToken();
+            const bodyData: Record<string, string | null> = {
+                difficulty_level: difficulty || null,
+            };
 
-      setTickets((prevTickets) =>
-        prevTickets.map((ticket) =>
-          ticket.id === ticketId
-            ? { ...ticket, difficulty_level: difficulty || undefined }
-            : ticket
-        )
-      )
+            const response = await fetch(`/api/bug-tickets/${ticketId}`, {
+                method: 'PATCH',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-Token': csrfToken || '',
+                },
+                body: JSON.stringify(bodyData),
+            });
 
-      toast({
-        title: "Sukses",
-        description: "Tingkat kesulitan berhasil diubah",
-      })
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Gagal mengubah tingkat kesulitan"
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      })
-    } finally {
-      setUpdatingTicketId(null)
-    }
-  }
+            const contentType = response.headers.get('content-type') ?? '';
+            const payload = contentType.includes('application/json')
+                ? await response.json()
+                : { message: await response.text() };
 
+            if (!response.ok) {
+                const errorMsg =
+                    payload?.message ||
+                    payload?.error ||
+                    `Error ${response.status}`;
+                throw new Error(errorMsg);
+            }
 
+            setTickets((prevTickets) =>
+                prevTickets.map((ticket) =>
+                    ticket.id === ticketId
+                        ? {
+                              ...ticket,
+                              difficulty_level: difficulty || undefined,
+                          }
+                        : ticket,
+                ),
+            );
 
-  const filteredTickets = tickets
-    .filter((ticket) => ticket.status?.toLowerCase() !== 'closed')
-    .filter(
-      (ticket) =>
-        ticket.ticket_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.user?.email?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    .sort((a, b) => {
-      // Urutkan berdasarkan prioritas (tinggi ke rendah)
-      const priorityDiff = getPriorityValue(b.priority) - getPriorityValue(a.priority)
-      if (priorityDiff !== 0) return priorityDiff
-      // Jika prioritas sama, urutkan berdasarkan waktu (yang pertama masuk di atas)
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    })
+            toast({
+                title: 'Sukses',
+                description: 'Tingkat kesulitan berhasil diubah',
+            });
+        } catch (error) {
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : 'Gagal mengubah tingkat kesulitan';
+            toast({
+                title: 'Error',
+                description: errorMessage,
+                variant: 'destructive',
+            });
+        } finally {
+            setUpdatingTicketId(null);
+        }
+    };
 
-  return (
-    <>
-      <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
-        <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mr-2 h-4" />
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/developer-dashboard">Dashboard</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/developer/tools">Laporan</BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </header>
+    const loadCollaborators = async (ticketId: number) => {
+        setLoadingCollaboratorsTicketId(ticketId);
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Laporan Bug Masuk</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Cari berdasarkan nomor tiket, username, atau email..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="max-w-sm"
-              />
-              <Button
-                onClick={handleManualRefresh}
-                disabled={isRefreshing}
-                size="sm"
-                variant="outline"
-                className="gap-2"
-              >
-                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                {isRefreshing ? 'Memperbarui...' : 'Segarkan'}
-              </Button>
-            </div>
+        try {
+            const response = await fetch(
+                `/api/bug-tickets/${ticketId}/collaborators`,
+                {
+                    headers: {
+                        Accept: 'application/json',
+                    },
+                    credentials: 'same-origin',
+                },
+            );
 
-            <Separator />
+            if (!response.ok) {
+                throw new Error(
+                    `Gagal memuat kolaborator (HTTP ${response.status})`,
+                );
+            }
 
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
-            ) : (
-              <div className="rounded-lg border overflow-x-auto">
-                <Table key={refreshKey}>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">Id</TableHead>
-                      <TableHead>Username</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Nomor Tiket</TableHead>
-                      <TableHead>Prioritas</TableHead>
-                      <TableHead>Kesulitan</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Handle By</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTickets && filteredTickets.length > 0 ? (
-                      filteredTickets.map((ticket) => (
-                        <TableRow key={ticket.id}>
-                          <TableCell className="font-medium">{ticket.id}</TableCell>
-                          <TableCell>{ticket.user?.name || "N/A"}</TableCell>
-                          <TableCell>{ticket.user?.email || "N/A"}</TableCell>
-                          <TableCell>
-                            {new Date(ticket.created_at).toLocaleDateString("id-ID")}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {ticket.ticket_number}
-                          </TableCell>
-                          <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
-                          <TableCell>
-                            <div
-                              title={
-                                isHandledByAdmin(ticket)
-                                  ? "Tidak bisa diubah saat sudah di handle!"
-                                  : "Ubah tingkat kesulitan"
-                              }
-                              className="inline-block"
-                            >
-                              <select
-                                value={ticket.difficulty_level || ""}
-                                onChange={(e) => updateDifficulty(ticket.id, e.target.value)}
-                                disabled={updatingTicketId === ticket.id || isHandledByAdmin(ticket)}
-                                className="text-xs px-2 py-1 border rounded bg-white dark:bg-gray-800 text-black dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                                aria-label="Ubah tingkat kesulitan"
-                                title={
-                                  isHandledByAdmin(ticket)
-                                    ? "Tidak bisa diubah saat sudah di handle!"
-                                    : "Ubah tingkat kesulitan"
+            const data = await response.json();
+            const collaborators = Array.isArray(data?.collaborators)
+                ? (data.collaborators as CollaboratorDetail[])
+                : [];
+
+            setCollaboratorsByTicket((prev) => ({
+                ...prev,
+                [ticketId]: collaborators,
+            }));
+        } catch (error) {
+            console.error('Failed to load collaborators:', error);
+        } finally {
+            setLoadingCollaboratorsTicketId((prev) =>
+                prev === ticketId ? null : prev,
+            );
+        }
+    };
+
+    const getWorkingAdmins = (
+        ticket: BugTicket,
+    ): Array<{ id: number | null; name: string }> => {
+        const result: Array<{ id: number | null; name: string }> = [];
+
+        if (ticket.assignedAdmin?.name) {
+            result.push({
+                id: Number.isFinite(ticket.assignedAdmin.id)
+                    ? ticket.assignedAdmin.id
+                    : null,
+                name: ticket.assignedAdmin.name,
+            });
+        }
+
+        const collaboratorsFromState = collaboratorsByTicket[ticket.id];
+        const collaboratorsFallback = ticket.collaborators_details ?? [];
+        const collaborators = collaboratorsFromState?.length
+            ? collaboratorsFromState
+            : collaboratorsFallback;
+
+        collaborators.forEach((collaborator) => {
+            if (!collaborator?.name) return;
+            result.push({
+                id: Number.isFinite(collaborator.id) ? collaborator.id : null,
+                name: collaborator.name,
+            });
+        });
+
+        return result.filter((item, index, arr) => {
+            const key = `${item.id ?? 'none'}-${item.name.toLowerCase()}`;
+            return (
+                arr.findIndex(
+                    (candidate) =>
+                        `${candidate.id ?? 'none'}-${candidate.name.toLowerCase()}` ===
+                        key,
+                ) === index
+            );
+        });
+    };
+
+    const filteredTickets = useMemo(
+        () =>
+            tickets
+                .filter((ticket) => normalizeStatus(ticket.status) !== 'closed')
+                .filter(
+                    (ticket) =>
+                        ticket.ticket_number
+                            ?.toLowerCase()
+                            .includes(searchQuery.toLowerCase()) ||
+                        ticket.user?.name
+                            ?.toLowerCase()
+                            .includes(searchQuery.toLowerCase()) ||
+                        ticket.user?.email
+                            ?.toLowerCase()
+                            .includes(searchQuery.toLowerCase()),
+                )
+                .sort((a, b) => {
+                    const priorityDiff =
+                        getPriorityValue(b.priority) -
+                        getPriorityValue(a.priority);
+                    if (priorityDiff !== 0) return priorityDiff;
+                    return (
+                        new Date(a.created_at).getTime() -
+                        new Date(b.created_at).getTime()
+                    );
+                }),
+        [tickets, searchQuery],
+    );
+
+    return (
+        <>
+            <header className="flex h-16 items-center gap-2 border-b border-border bg-background px-4">
+                <SidebarTrigger className="-ml-1" />
+                <Separator orientation="vertical" className="mr-2 h-4" />
+                <Breadcrumb>
+                    <BreadcrumbList>
+                        <BreadcrumbItem>
+                            <BreadcrumbLink href="/developer-dashboard">
+                                Dashboard
+                            </BreadcrumbLink>
+                        </BreadcrumbItem>
+                        <BreadcrumbItem>
+                            <BreadcrumbLink href="/developer/tools">
+                                Laporan
+                            </BreadcrumbLink>
+                        </BreadcrumbItem>
+                    </BreadcrumbList>
+                </Breadcrumb>
+            </header>
+
+            <div className="flex flex-1 flex-col gap-6 p-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Laporan Bug Masuk</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center gap-2">
+                            <Input
+                                placeholder="Cari berdasarkan nomor tiket, username, atau email..."
+                                value={searchQuery}
+                                onChange={(event) =>
+                                    setSearchQuery(event.target.value)
                                 }
-                              >
-                                <option value="">-</option>
-                                {DIFFICULTY_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </TableCell>
-                          <TableCell>{getStatusBadge(ticket.status)}</TableCell>
-                          <TableCell>
-                            {ticket.assignedAdmin?.name ? (
-                              <span className="text-sm font-medium text-gray-700">
-                                Telah di Handle {ticket.assignedAdmin.name}
-                              </span>
-                            ) : ticket.status === "open" ? (
-                              <Badge variant="secondary" className="bg-gray-100 text-gray-800">Belum di Handle</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-gray-600">Riwayat privat</Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
-                          Tidak ada data bug ticket
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+                                className="max-w-sm"
+                            />
+                            <Button
+                                onClick={handleManualRefresh}
+                                disabled={isRefreshing}
+                                size="sm"
+                                variant="outline"
+                                className="gap-2"
+                            >
+                                <RefreshCw
+                                    className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`}
+                                />
+                                {isRefreshing ? 'Memperbarui...' : 'Segarkan'}
+                            </Button>
+                        </div>
 
-            <div className="text-sm text-muted-foreground">
-              Total: {filteredTickets.length} bug ticket
+                        <Separator />
+
+                        {loading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-8 w-8 animate-spin" />
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto rounded-lg border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-12">
+                                                Id
+                                            </TableHead>
+                                            <TableHead>Username</TableHead>
+                                            <TableHead>Email</TableHead>
+                                            <TableHead>Tanggal</TableHead>
+                                            <TableHead>Nomor Tiket</TableHead>
+                                            <TableHead>Prioritas</TableHead>
+                                            <TableHead>Kesulitan</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead>Handle By</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredTickets.length > 0 ? (
+                                            filteredTickets.map((ticket) => {
+                                                const difficultyDisabled =
+                                                    updatingTicketId ===
+                                                        ticket.id ||
+                                                    isDifficultyLocked(
+                                                        ticket.status,
+                                                    );
+                                                const workingAdmins =
+                                                    getWorkingAdmins(ticket);
+
+                                                return (
+                                                    <TableRow key={ticket.id}>
+                                                        <TableCell className="font-medium">
+                                                            {ticket.id}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {ticket.user
+                                                                ?.name || 'N/A'}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {ticket.user
+                                                                ?.email ||
+                                                                'N/A'}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {new Date(
+                                                                ticket.created_at,
+                                                            ).toLocaleDateString(
+                                                                'id-ID',
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="font-mono text-sm">
+                                                            {
+                                                                ticket.ticket_number
+                                                            }
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getPriorityBadge(
+                                                                ticket.priority,
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div
+                                                                title={
+                                                                    isDifficultyLocked(
+                                                                        ticket.status,
+                                                                    )
+                                                                        ? 'Tidak bisa diubah saat tiket sudah diproses atau terselesaikan'
+                                                                        : 'Ubah tingkat kesulitan'
+                                                                }
+                                                                className="inline-block"
+                                                            >
+                                                                <select
+                                                                    value={
+                                                                        ticket.difficulty_level ||
+                                                                        ''
+                                                                    }
+                                                                    onChange={(
+                                                                        event,
+                                                                    ) =>
+                                                                        updateDifficulty(
+                                                                            ticket.id,
+                                                                            event
+                                                                                .target
+                                                                                .value,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        difficultyDisabled
+                                                                    }
+                                                                    className="rounded border bg-white px-2 py-1 text-xs text-black disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-800 dark:text-white"
+                                                                    aria-label="Ubah tingkat kesulitan"
+                                                                >
+                                                                    <option value="">
+                                                                        -
+                                                                    </option>
+                                                                    {DIFFICULTY_OPTIONS.map(
+                                                                        (
+                                                                            option,
+                                                                        ) => (
+                                                                            <option
+                                                                                key={
+                                                                                    option.value
+                                                                                }
+                                                                                value={
+                                                                                    option.value
+                                                                                }
+                                                                            >
+                                                                                {
+                                                                                    option.label
+                                                                                }
+                                                                            </option>
+                                                                        ),
+                                                                    )}
+                                                                </select>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {getStatusBadge(
+                                                                ticket.status,
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {isCollabTicket(
+                                                                ticket,
+                                                            ) ? (
+                                                                <DropdownMenu
+                                                                    onOpenChange={(
+                                                                        open,
+                                                                    ) => {
+                                                                        if (
+                                                                            open
+                                                                        ) {
+                                                                            void loadCollaborators(
+                                                                                ticket.id,
+                                                                            );
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <DropdownMenuTrigger
+                                                                        asChild
+                                                                    >
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            className="h-8 gap-1.5"
+                                                                        >
+                                                                            collab
+                                                                            <ChevronDown className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent
+                                                                        align="start"
+                                                                        className="w-56"
+                                                                    >
+                                                                        <DropdownMenuLabel>
+                                                                            Admin
+                                                                            yang
+                                                                            mengerjakan
+                                                                        </DropdownMenuLabel>
+                                                                        <div className="px-2 pb-2 text-sm">
+                                                                            {loadingCollaboratorsTicketId ===
+                                                                                ticket.id &&
+                                                                            workingAdmins.length ===
+                                                                                0 ? (
+                                                                                <p className="text-muted-foreground">
+                                                                                    Memuat...
+                                                                                </p>
+                                                                            ) : workingAdmins.length >
+                                                                              0 ? (
+                                                                                <ul className="space-y-1">
+                                                                                    {workingAdmins.map(
+                                                                                        (
+                                                                                            admin,
+                                                                                            index,
+                                                                                        ) => (
+                                                                                            <li
+                                                                                                key={`${admin.id ?? 'none'}-${index}`}
+                                                                                                className="text-foreground"
+                                                                                            >
+                                                                                                {
+                                                                                                    admin.name
+                                                                                                }
+                                                                                            </li>
+                                                                                        ),
+                                                                                    )}
+                                                                                </ul>
+                                                                            ) : (
+                                                                                <p className="text-muted-foreground">
+                                                                                    Belum
+                                                                                    ada
+                                                                                    admin
+                                                                                    kolaborasi
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            ) : ticket
+                                                                  .assignedAdmin
+                                                                  ?.name ? (
+                                                                <span className="text-sm font-medium text-gray-700">
+                                                                    Telah di
+                                                                    Handle{' '}
+                                                                    {
+                                                                        ticket
+                                                                            .assignedAdmin
+                                                                            .name
+                                                                    }
+                                                                </span>
+                                                            ) : (
+                                                                <Badge
+                                                                    variant="secondary"
+                                                                    className="bg-gray-100 text-gray-800"
+                                                                >
+                                                                    Belum di
+                                                                    Handle
+                                                                </Badge>
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell
+                                                    colSpan={9}
+                                                    className="py-8 text-center"
+                                                >
+                                                    Tidak ada data bug ticket
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        )}
+
+                        <div className="text-sm text-muted-foreground">
+                            Total: {filteredTickets.length} bug ticket
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    </>
-  )
+        </>
+    );
 }
