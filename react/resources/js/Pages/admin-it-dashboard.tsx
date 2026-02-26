@@ -82,7 +82,10 @@ export default function AdminITDashboard() {
     const fetchTickets = async () => {
       try {
         const response = await fetch('/api/bug-tickets')
-        if (!response.ok) throw new Error('Failed to fetch tickets')
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: 'Failed to fetch tickets' }))
+          throw new Error(errorData.message || `Failed to fetch tickets (${response.status})`)
+        }
         const data = await response.json()
         setTickets(data)
 
