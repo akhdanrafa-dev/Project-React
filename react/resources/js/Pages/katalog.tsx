@@ -1,5 +1,5 @@
 import { Search, ShoppingCart, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
     Breadcrumb,
@@ -16,15 +16,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useCart } from '@/layouts/app/context/CartContext';
 import { useCatalog } from '@/layouts/app/context/CatalogContext';
 import RootLayout from '@/layouts/app/RootLayouts';
-import { catalogCategories, type CatalogProduct } from '@/lib/catalog';
-
-const categoryLabelById = catalogCategories.reduce<Record<string, string>>(
-    (acc, category) => {
-        acc[category.id] = category.name;
-        return acc;
-    },
-    {},
-);
+import { type CatalogProduct } from '@/lib/catalog';
 
 export default function KatalogPage() {
     return (
@@ -35,13 +27,34 @@ export default function KatalogPage() {
 }
 
 function KatalogContent() {
-    const { products } = useCatalog();
+    const { products, categories } = useCatalog();
     const { items, addToCart } = useCart();
     const { toast } = useToast();
     const [selectedCategory, setSelectedCategory] = useState<string | null>(
         null,
     );
     const [searchQuery, setSearchQuery] = useState('');
+
+    const categoryLabelById = useMemo(
+        () =>
+            categories.reduce<Record<string, string>>((acc, category) => {
+                acc[category.id] = category.name;
+                return acc;
+            }, {}),
+        [categories],
+    );
+
+    useEffect(() => {
+        if (!selectedCategory) return;
+
+        const stillExists = categories.some(
+            (category) => category.id === selectedCategory,
+        );
+
+        if (!stillExists) {
+            setSelectedCategory(null);
+        }
+    }, [categories, selectedCategory]);
 
     const getDiscountPercentage = (discount?: number) => {
         if (!Number.isFinite(discount)) return 0;
@@ -210,7 +223,7 @@ function KatalogContent() {
                             Semua Produk ({searchedProducts.length})
                         </Button>
 
-                        {catalogCategories.map((category) => {
+                        {categories.map((category) => {
                             const Icon = category.icon;
                             const count = categoryCounts[category.id] ?? 0;
                             return (

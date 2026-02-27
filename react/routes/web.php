@@ -16,6 +16,7 @@ use App\Http\Controllers\AdminITController;
 use App\Http\Controllers\StaffProdukController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\AlertController;
+use App\Models\Category;
 use App\Models\Product;
 
 /*
@@ -257,6 +258,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/kelola-produk', [StaffProdukController::class, 'store'])
         ->name('kelola.produk.store')
         ->middleware('auth');
+
+    Route::post('/kelola-produk/categories', [StaffProdukController::class, 'storeCategory'])
+        ->name('kelola.produk.categories.store')
+        ->middleware('auth');
+
+    Route::patch('/kelola-produk/categories/{id}', [StaffProdukController::class, 'updateCategory'])
+        ->name('kelola.produk.categories.update')
+        ->middleware('auth');
     
     Route::patch('/kelola-produk/{id}', [StaffProdukController::class, 'update'])
         ->name('kelola.produk.update')
@@ -429,8 +438,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
             })
             ->values();
 
+        $categories = Category::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug'])
+            ->map(function (Category $category) {
+                return [
+                    'id' => (int) $category->id,
+                    'name' => $category->name,
+                    'slug' => $category->slug,
+                ];
+            })
+            ->values();
+
         return response()->json([
             'products' => $products,
+            'categories' => $categories,
         ]);
     });
 
