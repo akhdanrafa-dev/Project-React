@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -55,7 +56,9 @@ class StaffProdukController extends Controller
             ];
         })->values();
 
-        $categories = Category::all(['id', 'name', 'slug', 'description']);
+        $categories = Category::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug', 'description']);
 
         // Render different template based on role
         $template = $user->role === 'developer' ? 'kelola-produk' : 'staff/kelola-produk';
@@ -144,6 +147,104 @@ class StaffProdukController extends Controller
 
         return redirect()->route('kelola.produk')
             ->with('message', 'Produk berhasil ditambahkan');
+    }
+
+    /**
+     * Store a newly created category
+     */
+    public function storeCategory(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user || !in_array($user->role, ['staff', 'developer'], true)) {
+            abort(403, 'Access denied. Only staff and developer can create categories.');
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:100',
+            'description' => 'sometimes|nullable|string|max:500',
+        ]);
+
+        $name = trim((string) $validated['name']);
+        $description = array_key_exists('description', $validated)
+            ? trim((string) $validated['description'])
+            : null;
+        $slug = Str::slug($name);
+
+        if ($slug === '') {
+            throw ValidationException::withMessages([
+                'name' => ['Nama kategori tidak valid.'],
+            ]);
+        }
+
+        $existingCategory = Category::query()
+            ->where('slug', $slug)
+            ->orWhereRaw('LOWER(name) = ?', [Str::lower($name)])
+            ->first();
+
+        if ($existingCategory) {
+            return response()->json([
+                'message' => 'Kategori sudah tersedia',
+                'category' => $this->transformCategory($existingCategory),
+            ]);
+        }
+
+        $createdCategory = Category::create([
+            'name' => $name,
+            'slug' => $slug,
+            'description' => $description !== '' ? $description : null,
+        ]);
+
+        return response()->json([
+            'message' => 'Kategori berhasil ditambahkan',
+            'category' => $this->transformCategory($createdCategory),
+        ], 201);
+    }
+
+    /**
+     * Update the specified category
+     */
+    public function updateCategory(Request $request, int $id)
+    {
+        $user = $request->user();
+
+        if (!$user || !in_array($user->role, ['staff', 'developer'], true)) {
+            abort(403, 'Access denied. Only staff and developer can update categories.');
+        }
+
+        $category = Category::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('categories', 'name')->ignore($category->id),
+            ],
+            'description' => 'sometimes|nullable|string|max:500',
+        ]);
+
+        $name = trim((string) $validated['name']);
+        $description = array_key_exists('description', $validated)
+            ? trim((string) $validated['description'])
+            : $category->description;
+
+        if ($name === '') {
+            throw ValidationException::withMessages([
+                'name' => ['Nama kategori tidak boleh kosong.'],
+            ]);
+        }
+
+        $category->name = $name;
+        if (array_key_exists('description', $validated)) {
+            $category->description = $description !== '' ? $description : null;
+        }
+        $category->save();
+
+        return response()->json([
+            'message' => 'Kategori berhasil diperbarui',
+            'category' => $this->transformCategory($category),
+        ]);
     }
 
     /**
@@ -302,7 +403,20 @@ class StaffProdukController extends Controller
 
     private function resolveCategoryId(string $category): ?int
     {
-        $normalized = strtolower(trim($category));
+        $trimmed = trim($category);
+
+        if ($trimmed === '') {
+            return null;
+        }
+
+        if (ctype_digit($trimmed)) {
+            $matchedById = Category::find((int) $trimmed, ['id']);
+            if ($matchedById) {
+                return (int) $matchedById->id;
+            }
+        }
+
+        $normalized = Str::slug($trimmed);
 
         if ($normalized === '') {
             return null;
@@ -325,7 +439,24 @@ class StaffProdukController extends Controller
             }
         }
 
+        $matchedByName = Category::whereRaw('LOWER(name) = ?', [Str::lower($trimmed)])
+            ->first(['id']);
+
+        if ($matchedByName) {
+            return (int) $matchedByName->id;
+        }
+
         return null;
+    }
+
+    private function transformCategory(Category $category): array
+    {
+        return [
+            'id' => (int) $category->id,
+            'name' => $category->name,
+            'slug' => $category->slug,
+            'description' => $category->description,
+        ];
     }
 
     private function resolveStatusFromStock(int $stock): string
