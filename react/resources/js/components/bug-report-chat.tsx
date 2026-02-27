@@ -40,6 +40,14 @@ interface BugTicket {
     status: string;
     user_id: number;
     assigned_to?: number | null;
+    assignedAdmin?: {
+        id: number;
+        name: string;
+    } | null;
+    assigned_admin?: {
+        id: number;
+        name: string;
+    } | null;
     created_at: string;
     appeal_count?: number;
     messages?: ChatMessage[];
@@ -527,6 +535,8 @@ export function BugReportChat({
 
     const isAdminIT = currentUserRole === 'admin_it';
     const isTicketOwner = ticket.user_id === currentUserId;
+    const assignedAdminName =
+        ticket.assignedAdmin?.name ?? ticket.assigned_admin?.name ?? null;
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -621,6 +631,14 @@ export function BugReportChat({
                             {getStatusLabel(status)}
                         </Badge>
                     </div>
+                    {isTicketOwner && ticket.assigned_to ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            Diambil oleh:{' '}
+                            <span className="font-semibold text-foreground">
+                                {assignedAdminName ?? 'Admin IT'}
+                            </span>
+                        </p>
+                    ) : null}
                 </DialogHeader>
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

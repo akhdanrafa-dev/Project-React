@@ -48,6 +48,7 @@ class BugTicketController extends Controller
                         $query->latest();
                     },
                     'messages.user',
+                    'assignedAdmin',
                 ])
                 ->latest()
                 ->get();
@@ -381,7 +382,7 @@ class BugTicketController extends Controller
             };
 
             // Count tickets where admin is the owner (assigned_to)
-            $ownedTickets = BugTicket::where('assigned_to', $adminId)
+            $ownedTickets = BugTicket::withTrashed()->where('assigned_to', $adminId)
                 ->where(function ($query) use ($dateFilter) {
                     // For completed tickets, use resolved_at
                     $query->where(function ($q) use ($dateFilter) {
@@ -397,7 +398,7 @@ class BugTicketController extends Controller
                 ->count();
 
             // Count tickets where admin is a collaborator
-            $collaboratedTickets = $this->whereCollaboratorContains(BugTicket::query(), $adminId)
+            $collaboratedTickets = $this->whereCollaboratorContains(BugTicket::withTrashed(), $adminId)
                 ->where(function ($query) use ($dateFilter) {
                     // For completed tickets, use resolved_at
                     $query->where(function ($q) use ($dateFilter) {
@@ -416,7 +417,7 @@ class BugTicketController extends Controller
         };
 
         // Build base query for all tickets (assigned or collaborated)
-        $allTicketsQuery = BugTicket::query();
+        $allTicketsQuery = BugTicket::withTrashed();
         $allTicketsQuery = $getAdminTicketsQuery($allTicketsQuery);
 
         // Build query for completed tickets
@@ -442,11 +443,11 @@ class BugTicketController extends Controller
         // Count collaboration: 
         // 1. Tickets where admin is the owner AND has collaborators (admin utama yang mengundang kolaborator)
         // 2. Tickets where admin is a collaborator (admin yang diajak kolaborasi)
-        $collaborationAsOwner = BugTicket::where('assigned_to', $adminId)
+        $collaborationAsOwner = BugTicket::withTrashed()->where('assigned_to', $adminId)
             ->where('collaboration_type', 'collab')
             ->count();
             
-        $collaborationAsCollaborator = $this->whereCollaboratorContains(BugTicket::query(), $adminId)
+        $collaborationAsCollaborator = $this->whereCollaboratorContains(BugTicket::withTrashed(), $adminId)
             ->count();
             
         $collaborationCount = $collaborationAsOwner + $collaborationAsCollaborator;
@@ -473,7 +474,7 @@ class BugTicketController extends Controller
     private function calculateAverageResolutionTime($adminId)
     {
         $adminId = (int) $adminId;
-        $resolvedTickets = BugTicket::where(function ($query) use ($adminId) {
+        $resolvedTickets = BugTicket::withTrashed()->where(function ($query) use ($adminId) {
                 $query->where('assigned_to', $adminId);
                 $this->orWhereCollaboratorContains($query, $adminId);
             })
@@ -498,7 +499,7 @@ class BugTicketController extends Controller
         
         $ranking = $admins->map(function ($admin) {
             // Query for tickets assigned or collaborated
-            $baseTicketQuery = BugTicket::where(function ($query) use ($admin) {
+            $baseTicketQuery = BugTicket::withTrashed()->where(function ($query) use ($admin) {
                 $query->where('assigned_to', $admin->id);
                 $this->orWhereCollaboratorContains($query, (int) $admin->id);
             });
@@ -512,11 +513,11 @@ class BugTicketController extends Controller
             // Count collaboration: 
             // 1. Tickets where admin is the owner AND has collaborators (admin utama yang mengundang kolaborator)
             // 2. Tickets where admin is a collaborator (admin yang diajak kolaborasi)
-            $collaborationAsOwner = BugTicket::where('assigned_to', $admin->id)
+            $collaborationAsOwner = BugTicket::withTrashed()->where('assigned_to', $admin->id)
                 ->where('collaboration_type', 'collab')
                 ->count();
                 
-            $collaborationAsCollaborator = $this->whereCollaboratorContains(BugTicket::query(), (int) $admin->id)
+            $collaborationAsCollaborator = $this->whereCollaboratorContains(BugTicket::withTrashed(), (int) $admin->id)
                 ->count();
 
             return [
@@ -693,7 +694,7 @@ class BugTicketController extends Controller
         $stats = $admins->map(function ($admin) use ($lastTwoDaysStart, $thisMonth, $thisYear) {
             // Query for tickets assigned or collaborated
             $baseTicketQuery = function () use ($admin) {
-                return BugTicket::where(function ($query) use ($admin) {
+                return BugTicket::withTrashed()->where(function ($query) use ($admin) {
                     $query->where('assigned_to', $admin->id);
                     $this->orWhereCollaboratorContains($query, (int) $admin->id);
                 });
@@ -982,7 +983,12 @@ class BugTicketController extends Controller
             return $ticket;
         }
 
-        // Show full info jika viewer adalah pemilik ticket
+        // Show full info jika viewer adalah pelapor tiket (user pemilik tiket)
+        if ((int) $ticket->user_id === (int) $viewer->id) {
+            return $ticket;
+        }
+
+        // Show full info jika tiket belum diambil atau viewer adalah admin yang mengambil tiket
         if (!$ticket->assigned_to || (int) $ticket->assigned_to === (int) $viewer->id) {
             return $ticket;
         }

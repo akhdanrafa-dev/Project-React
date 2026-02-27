@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import RootLayout from "@/layouts/app/RootLayouts"
+import type { SharedData } from "@/types"
 
 interface BugTicket {
   id: number
@@ -48,6 +49,15 @@ interface BugTicket {
     id: number
     name: string
   } | null
+  assigned_admin?: {
+    id: number
+    name: string
+  } | null
+}
+
+interface AdminITUser {
+  id: number
+  name: string
 }
 
 export default function UserLaporanPage() {
@@ -59,8 +69,7 @@ export default function UserLaporanPage() {
 }
 
 function UserLaporanContent() {
-  const page = usePage()
-  const { auth } = page.props as any
+  const { auth } = usePage<SharedData>().props
   const { toast } = useToast()
   const [tickets, setTickets] = useState<BugTicket[]>([])
   const [loading, setLoading] = useState(false)
@@ -69,8 +78,10 @@ function UserLaporanContent() {
   const [resolutionModalOpen, setResolutionModalOpen] = useState(false)
   const [deletingTicketId, setDeletingTicketId] = useState<number | null>(null)
   const [deletingAllClosed, setDeletingAllClosed] = useState(false)
+  const [adminNamesById, setAdminNamesById] = useState<Record<number, string>>({})
 
   useEffect(() => {
+    fetchAdminList()
     fetchTickets()
 
     // Polling untuk update status tiket setiap 5 detik
@@ -81,6 +92,23 @@ function UserLaporanContent() {
     return () => clearInterval(interval)
   }, [])
 
+  const fetchAdminList = async () => {
+    try {
+      const response = await fetch("/api/admin-it-list")
+      if (!response.ok) return
+      const admins = (await response.json()) as AdminITUser[]
+
+      const namesById = admins.reduce<Record<number, string>>((acc, admin) => {
+        acc[Number(admin.id)] = admin.name
+        return acc
+      }, {})
+
+      setAdminNamesById(namesById)
+    } catch {
+      // Keep ticket list usable even when admin directory endpoint fails.
+    }
+  }
+
   const fetchTickets = async (isPolling = false) => {
     if (!isPolling) {
       setLoading(true)
@@ -89,10 +117,14 @@ function UserLaporanContent() {
       const response = await fetch("/api/bug-tickets")
       if (!response.ok) throw new Error("Gagal mengambil ticket")
 
-      const data = await response.json()
-      const userTickets = data.filter((ticket: BugTicket) => ticket.user_id === auth.user.id)
+      const data = (await response.json()) as BugTicket[]
+      const normalizedTickets = data.map((ticket) => ({
+        ...ticket,
+        assignedAdmin: ticket.assignedAdmin ?? ticket.assigned_admin ?? null,
+      }))
+      const userTickets = normalizedTickets.filter((ticket) => ticket.user_id === auth.user.id)
       setTickets(userTickets)
-    } catch (error) {
+    } catch {
       if (!isPolling) {
         toast({
           title: "Error",
@@ -167,6 +199,33 @@ function UserLaporanContent() {
       default:
         return <Badge className="bg-gray-100 text-gray-800">-</Badge>
     }
+  }
+
+  const getAssignedAdminName = (ticket: BugTicket) => {
+    return (
+      ticket.assignedAdmin?.name ??
+      ticket.assigned_admin?.name ??
+      (ticket.assigned_to ? adminNamesById[Number(ticket.assigned_to)] : undefined) ??
+      null
+    )
+  }
+
+  const renderHandledByCell = (ticket: BugTicket) => {
+    const assignedAdminName = getAssignedAdminName(ticket)
+
+    if (assignedAdminName) {
+      return <span className="text-sm">{assignedAdminName}</span>
+    }
+
+    if (ticket.status?.toLowerCase() === "open") {
+      return <Badge variant="secondary">Belum di handle</Badge>
+    }
+
+    if (ticket.assigned_to) {
+      return <Badge variant="outline">Sedang di-handle Admin IT</Badge>
+    }
+
+    return <Badge variant="outline">Riwayat privat</Badge>
   }
 
   const openResolutionModal = (ticket: BugTicket) => {
@@ -411,15 +470,7 @@ function UserLaporanContent() {
                               {getDifficultyBadge(ticket.difficulty_level)}
                             </TableCell>
                             <TableCell>{getStatusBadge(ticket.status)}</TableCell>
-                            <TableCell>
-                              {ticket.assignedAdmin ? (
-                                <span className="text-sm">{ticket.assignedAdmin.name}</span>
-                              ) : ticket.status?.toLowerCase() === "open" ? (
-                                <Badge variant="secondary">Belum di handle</Badge>
-                              ) : (
-                                <Badge variant="outline">Riwayat privat</Badge>
-                              )}
-                            </TableCell>
+                            <TableCell>{renderHandledByCell(ticket)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -465,15 +516,7 @@ function UserLaporanContent() {
                               {getDifficultyBadge(ticket.difficulty_level)}
                             </TableCell>
                             <TableCell>{getStatusBadge(ticket.status)}</TableCell>
-                            <TableCell>
-                              {ticket.assignedAdmin ? (
-                                <span className="text-sm">{ticket.assignedAdmin.name}</span>
-                              ) : ticket.status?.toLowerCase() === "open" ? (
-                                <Badge variant="secondary">Belum di handle</Badge>
-                              ) : (
-                                <Badge variant="outline">Riwayat privat</Badge>
-                              )}
-                            </TableCell>
+                            <TableCell>{renderHandledByCell(ticket)}</TableCell>
                             <TableCell>
                               <div className="flex gap-2">
                                 <Button
@@ -549,15 +592,7 @@ function UserLaporanContent() {
                               {getDifficultyBadge(ticket.difficulty_level)}
                             </TableCell>
                             <TableCell>{getStatusBadge(ticket.status)}</TableCell>
-                            <TableCell>
-                              {ticket.assignedAdmin ? (
-                                <span className="text-sm">{ticket.assignedAdmin.name}</span>
-                              ) : ticket.status?.toLowerCase() === "open" ? (
-                                <Badge variant="secondary">Belum di handle</Badge>
-                              ) : (
-                                <Badge variant="outline">Riwayat privat</Badge>
-                              )}
-                            </TableCell>
+                            <TableCell>{renderHandledByCell(ticket)}</TableCell>
                             <TableCell>
                               <Button
                                 size="sm"

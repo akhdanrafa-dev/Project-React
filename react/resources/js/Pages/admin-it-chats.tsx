@@ -194,7 +194,7 @@ const formatFileSize = (size: number) => {
 };
 
 const isChatTicketVisible = (ticket: Pick<Ticket, 'status'>) =>
-    ticket.status !== 'closed';
+    ticket.status === 'in_progress';
 const normalizeTicket = (ticket: Ticket): Ticket => ({
     ...ticket,
     assignedAdmin: ticket.assignedAdmin ?? ticket.assigned_admin ?? null,
@@ -877,10 +877,11 @@ export default function AdminITChats() {
                     <Card className="h-full">
                         <CardHeader>
                             <CardTitle className="text-base">
-                                Tiket Saya
+                                Tiket Dalam Proses
                             </CardTitle>
                             <CardDescription>
-                                Daftar tiket yang bisa Anda chat-kan langsung
+                                Chat hanya tersedia untuk tiket yang sedang
+                                diproses
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
@@ -890,7 +891,7 @@ export default function AdminITChats() {
                                 </p>
                             ) : tickets.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">
-                                    Belum ada tiket
+                                    Belum ada tiket dalam proses
                                 </p>
                             ) : (
                                 tickets.map((ticket) => {

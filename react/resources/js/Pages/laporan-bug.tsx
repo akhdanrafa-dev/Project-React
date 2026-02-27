@@ -46,6 +46,14 @@ interface BugTicket {
   status: string
   user_id: number
   assigned_to?: number | null
+  assignedAdmin?: {
+    id: number
+    name: string
+  } | null
+  assigned_admin?: {
+    id: number
+    name: string
+  } | null
   created_at: string
   messages?: ChatMessage[]
 }
@@ -160,6 +168,10 @@ function LaporanBugContent() {
       default:
         return priority
     }
+  }
+
+  const getAssignedAdminName = (ticket: BugTicket) => {
+    return ticket.assignedAdmin?.name ?? ticket.assigned_admin?.name ?? null
   }
 
   const openTicket = (ticket: BugTicket) => {
@@ -397,6 +409,7 @@ function LaporanBugContent() {
               const unreadMessages = ticket.messages?.filter(
                 (msg) => !msg.is_read && msg.user_id !== auth.user.id
               ).length ?? 0
+              const assignedAdminName = getAssignedAdminName(ticket)
 
               return (
                 <Card
@@ -440,6 +453,14 @@ function LaporanBugContent() {
                         <p className="text-xs md:text-sm text-muted-foreground line-clamp-1 mt-1" title={ticket.description}>
                           {ticket.description}
                         </p>
+                        {ticket.assigned_to ? (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Diambil oleh:{" "}
+                            <span className="font-medium text-foreground">
+                              {assignedAdminName ?? "Admin IT"}
+                            </span>
+                          </p>
+                        ) : null}
                       </div>
                     </div>
 

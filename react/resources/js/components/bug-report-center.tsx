@@ -41,6 +41,14 @@ interface BugTicket {
   status: string
   user_id: number
   assigned_to?: number | null
+  assignedAdmin?: {
+    id: number
+    name: string
+  } | null
+  assigned_admin?: {
+    id: number
+    name: string
+  } | null
   created_at: string
   messages?: ChatMessage[]
 }
@@ -184,6 +192,10 @@ export function BugReportCenter({
     }
   }
 
+  const getAssignedAdminName = (ticket: BugTicket) => {
+    return ticket.assignedAdmin?.name ?? ticket.assigned_admin?.name ?? null
+  }
+
   return (
     <>
       <Dialog open={centerOpen} onOpenChange={setCenterOpen}>
@@ -228,6 +240,7 @@ export function BugReportCenter({
                   const unreadMessages = ticket.messages?.filter(
                     (msg) => !msg.is_read && msg.user_id !== currentUserId
                   ).length ?? 0
+                  const assignedAdminName = getAssignedAdminName(ticket)
 
                   return (
                     <div
@@ -243,6 +256,14 @@ export function BugReportCenter({
                           <p className="text-sm text-muted-foreground truncate">
                             {ticket.description}
                           </p>
+                          {ticket.assigned_to ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Diambil oleh:{" "}
+                              <span className="font-medium text-foreground">
+                                {assignedAdminName ?? "Admin IT"}
+                              </span>
+                            </p>
+                          ) : null}
                         </div>
                         {unreadMessages > 0 && (
                           <span className="flex items-center justify-center h-6 w-6 bg-red-500 text-white text-xs rounded-full font-bold flex-shrink-0">

@@ -92,6 +92,13 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
     fetchTickets()
   }
 
+  const getAssignedAdminName = (ticket: {
+    assignedAdmin?: { name?: string | null } | null
+    assigned_admin?: { name?: string | null } | null
+  }) => {
+    return ticket?.assignedAdmin?.name ?? ticket?.assigned_admin?.name ?? null
+  }
+
   const handleContactUsFromChatbot = () => {
     window.location.href = "/laporan-bug"
     setIsOpen(false)
@@ -176,6 +183,7 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
                     const unreadMessages = ticket.messages?.filter(
                       (msg: any) => !msg.is_read && msg.user_id !== currentUserId
                     ).length ?? 0
+                    const assignedAdminName = getAssignedAdminName(ticket)
 
                     return (
                       <div
@@ -191,6 +199,14 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
                             <p className="font-semibold text-sm truncate">
                               {ticket.ticket_number || `#${ticket.id}`} - {ticket.title}
                             </p>
+                            {ticket.assigned_to ? (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Diambil oleh:{" "}
+                                <span className="font-medium text-foreground">
+                                  {assignedAdminName ?? "Admin IT"}
+                                </span>
+                              </p>
+                            ) : null}
                           </div>
                           {unreadMessages > 0 && (
                             <Badge className="bg-red-500 text-white text-xs flex-shrink-0">
@@ -236,6 +252,7 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
                     const unreadMessages = ticket.messages?.filter(
                       (msg: any) => !msg.is_read && msg.user_id !== currentUserId
                     ).length ?? 0
+                    const assignedAdminName = getAssignedAdminName(ticket)
 
                     return (
                       <div
@@ -251,6 +268,14 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
                             <p className="font-semibold text-sm truncate">
                               {ticket.ticket_number || `#${ticket.id}`} - {ticket.title}
                             </p>
+                            {ticket.assigned_to ? (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Diambil oleh:{" "}
+                                <span className="font-medium text-foreground">
+                                  {assignedAdminName ?? "Admin IT"}
+                                </span>
+                              </p>
+                            ) : null}
                           </div>
                           {unreadMessages > 0 && (
                             <Badge className="bg-red-500 text-white text-xs flex-shrink-0">
