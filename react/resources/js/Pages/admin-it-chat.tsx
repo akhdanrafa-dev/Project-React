@@ -38,6 +38,12 @@ interface ChatMessage {
     is_read: boolean;
 }
 
+interface CollaboratorDetail {
+    id: number;
+    name: string;
+    email?: string | null;
+}
+
 interface Ticket {
     id: number;
     ticket_number: string;
@@ -47,6 +53,8 @@ interface Ticket {
     priority: string;
     difficulty_level?: string;
     category: string;
+    collaboration_type?: string;
+    collaborators?: number[] | null;
     created_at: string;
     assigned_to?: number | null;
     assignedAdmin?: {
@@ -88,6 +96,9 @@ const formatFileSize = (size: number) => {
 export default function AdminITChat({ ticketId }: Props) {
     const { auth } = usePage<SharedData>().props;
     const [ticket, setTicket] = useState<Ticket | null>(null);
+    const [collaboratorsDetails, setCollaboratorsDetails] = useState<
+        CollaboratorDetail[]
+    >([]);
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -120,12 +131,35 @@ export default function AdminITChat({ ticketId }: Props) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
+    const fetchCollaborators = async (currentTicketId: number) => {
+        try {
+            const response = await fetch(
+                `/api/bug-tickets/${currentTicketId}/collaborators`,
+            );
+            if (!response.ok) throw new Error('Failed to fetch collaborators');
+
+            const data = await response.json();
+            const collaborators = Array.isArray(data?.collaborators)
+                ? (data.collaborators as CollaboratorDetail[])
+                : [];
+            setCollaboratorsDetails(collaborators);
+        } catch (err) {
+            console.error('Failed to fetch collaborators:', err);
+            setCollaboratorsDetails([]);
+        }
+    };
+
     const fetchTicket = async () => {
         try {
             const response = await fetch(`/api/bug-tickets/${ticketId}`);
             if (!response.ok) throw new Error('Failed to fetch ticket');
-            const data = await response.json();
+            const data = (await response.json()) as Ticket;
             setTicket(data);
+            if (data.collaboration_type === 'collab') {
+                await fetchCollaborators(data.id);
+            } else {
+                setCollaboratorsDetails([]);
+            }
             await markMessagesAsRead();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
@@ -378,6 +412,10 @@ export default function AdminITChat({ ticketId }: Props) {
         (ticket.assigned_to === currentUserId
             ? (auth.user?.name ?? null)
             : null);
+    const isCollabTicket = ticket.collaboration_type === 'collab';
+    const collaboratorNames = collaboratorsDetails
+        .map((collaborator) => collaborator.name)
+        .filter(Boolean);
 
     const userImageMessages = ticket.messages.filter(
         (msg) => msg.user?.role === 'user' && !!msg.image_url,
@@ -720,9 +758,29 @@ export default function AdminITChat({ ticketId }: Props) {
                             </CardHeader>
                             <CardContent>
                                 {assignedAdminName ? (
-                                    <p className="text-sm font-medium text-green-600">
-                                        {`Sudah di handle oleh (${assignedAdminName})`}
-                                    </p>
+                                    isCollabTicket ? (
+                                        <div className="space-y-2">
+                                            <p className="text-sm font-medium text-green-600">
+                                                {`Collab (admin utama: ${assignedAdminName})`}
+                                            </p>
+                                            <div className="text-sm">
+                                                <p className="font-medium">
+                                                    Kolaborator:
+                                                </p>
+                                                <p className="text-muted-foreground">
+                                                    {collaboratorNames.length > 0
+                                                        ? collaboratorNames.join(
+                                                              ', ',
+                                                          )
+                                                        : 'Belum ada kolaborator'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm font-medium text-green-600">
+                                            {`Sudah di handle oleh (${assignedAdminName})`}
+                                        </p>
+                                    )
                                 ) : ticket.status === 'open' ? (
                                     <p className="text-sm text-muted-foreground">
                                         Belum di-handle

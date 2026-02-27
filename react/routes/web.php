@@ -90,6 +90,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             '/admin-it/profile/{id}',
             [AdminITController::class, 'showProfile']
         )->name('admin-it.profile.show');
+        Route::patch(
+            '/api/admin-it/profile/{id}',
+            [AdminITController::class, 'updateProfile']
+        )->name('admin-it.profile.update');
 
         /*
         |--------------------------------------------------------------------------
