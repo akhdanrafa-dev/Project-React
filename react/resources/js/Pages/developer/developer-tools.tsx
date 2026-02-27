@@ -68,6 +68,8 @@ type ApiBugTicket = BugTicket & {
     assigned_admin?: BugTicket['assignedAdmin'];
 };
 
+type StatusFilter = 'all' | 'open' | 'in_progress' | 'resolved';
+
 const DIFFICULTY_OPTIONS = [
     { value: 'easy', label: 'Mudah' },
     { value: 'medium', label: 'Sedang' },
@@ -101,6 +103,7 @@ function DeveloperToolsContent() {
     const [loading, setLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [updatingTicketId, setUpdatingTicketId] = useState<number | null>(
         null,
     );
@@ -356,10 +359,39 @@ function DeveloperToolsContent() {
         });
     };
 
+    const activeTickets = useMemo(
+        () =>
+            tickets.filter((ticket) => normalizeStatus(ticket.status) !== 'closed'),
+        [tickets],
+    );
+
+    const statusCounts = useMemo(() => {
+        const open = activeTickets.filter(
+            (ticket) => normalizeStatus(ticket.status) === 'open',
+        ).length;
+        const inProgress = activeTickets.filter(
+            (ticket) => normalizeStatus(ticket.status) === 'in_progress',
+        ).length;
+        const resolved = activeTickets.filter(
+            (ticket) => normalizeStatus(ticket.status) === 'resolved',
+        ).length;
+
+        return {
+            all: activeTickets.length,
+            open,
+            in_progress: inProgress,
+            resolved,
+        };
+    }, [activeTickets]);
+
     const filteredTickets = useMemo(
         () =>
-            tickets
-                .filter((ticket) => normalizeStatus(ticket.status) !== 'closed')
+            activeTickets
+                .filter((ticket) =>
+                    statusFilter === 'all'
+                        ? true
+                        : normalizeStatus(ticket.status) === statusFilter,
+                )
                 .filter(
                     (ticket) =>
                         ticket.ticket_number
@@ -382,7 +414,7 @@ function DeveloperToolsContent() {
                         new Date(b.created_at).getTime()
                     );
                 }),
-        [tickets, searchQuery],
+        [activeTickets, searchQuery, statusFilter],
     );
 
     return (
@@ -412,27 +444,69 @@ function DeveloperToolsContent() {
                         <CardTitle>Laporan Bug Masuk</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex items-center gap-2">
-                            <Input
-                                placeholder="Cari berdasarkan nomor tiket, username, atau email..."
-                                value={searchQuery}
-                                onChange={(event) =>
-                                    setSearchQuery(event.target.value)
-                                }
-                                className="max-w-sm"
-                            />
-                            <Button
-                                onClick={handleManualRefresh}
-                                disabled={isRefreshing}
-                                size="sm"
-                                variant="outline"
-                                className="gap-2"
-                            >
-                                <RefreshCw
-                                    className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`}
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Input
+                                    placeholder="Cari berdasarkan nomor tiket, username, atau email..."
+                                    value={searchQuery}
+                                    onChange={(event) =>
+                                        setSearchQuery(event.target.value)
+                                    }
+                                    className="max-w-sm"
                                 />
-                                {isRefreshing ? 'Memperbarui...' : 'Segarkan'}
-                            </Button>
+                                <Button
+                                    onClick={handleManualRefresh}
+                                    disabled={isRefreshing}
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-2"
+                                >
+                                    <RefreshCw
+                                        className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`}
+                                    />
+                                    {isRefreshing
+                                        ? 'Memperbarui...'
+                                        : 'Segarkan'}
+                                </Button>
+                            </div>
+
+                            <div className="ml-auto flex items-center gap-2">
+                                <Button
+                                    size="sm"
+                                    onClick={() => {
+                                        window.location.href =
+                                            '/developer/laporan-periode';
+                                    }}
+                                >
+                                    Laporan Periode
+                                </Button>
+                    
+                                <select
+                                    id="status-filter"
+                                    value={statusFilter}
+                                    onChange={(event) =>
+                                        setStatusFilter(
+                                            event.target.value as StatusFilter,
+                                        )
+                                    }
+                                    className="rounded border bg-white px-3 py-1.5 text-sm text-black dark:bg-gray-800 dark:text-white"
+                                    aria-label="Filter status laporan"
+                                >
+                                    <option value="all">
+                                        Semua laporan ({statusCounts.all})
+                                    </option>
+                                  "
+                                    <option value="open">
+                                        Laporan masuk ({statusCounts.open})
+                                    </option>
+                                    <option value="in_progress">
+                                        Sedang diproses ({statusCounts.in_progress})
+                                    </option>
+                                    <option value="resolved">
+                                        Terselesaikan ({statusCounts.resolved})
+                                    </option>
+                                </select>
+                            </div>
                         </div>
 
                         <Separator />

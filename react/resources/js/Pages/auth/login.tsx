@@ -35,6 +35,7 @@ export default function Login({
                 {...store.form()}
                 resetOnSuccess={['password']}
                 className="flex flex-col gap-6"
+                autoComplete="off"
             >
                 {({ processing, errors }) => (
                     <>
@@ -48,8 +49,9 @@ export default function Login({
                                     required
                                     autoFocus
                                     tabIndex={1}
-                                    autoComplete="email"
-                                    placeholder="email@example.com"
+                                    autoComplete="off"
+                                    defaultValue=""
+                                    placeholder="Contoh: demo@gmail.com"
                                 />
                                 <InputError message={errors.email} />
                             </div>
@@ -72,8 +74,9 @@ export default function Login({
                                     name="password"
                                     required
                                     tabIndex={2}
-                                    autoComplete="current-password"
-                                    placeholder="Password"
+                                    autoComplete="new-password"
+                                    defaultValue=""
+                                    placeholder="Contoh: 12345678"
                                 />
                                 <InputError message={errors.password} />
                             </div>
@@ -119,3 +122,4 @@ export default function Login({
         </AuthLayout>
     );
 }
+

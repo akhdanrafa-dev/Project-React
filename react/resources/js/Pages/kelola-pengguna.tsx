@@ -1,6 +1,6 @@
 import { Head } from '@inertiajs/react';
 import { Plus, Search, Edit2, Trash2 } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
 import {
   AlertDialog,
@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
+import { useToast } from "@/components/ui/use-toast"
 import DeveloperLayout from '@/layouts/app/DeveloperLayout'
 
 interface User {
@@ -50,7 +51,9 @@ interface Props {
 }
 
 export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [users, setUsers] = useState<User[]>(initialUsers)
   const [loading, setLoading] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -69,6 +72,24 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
   useEffect(() => {
     setUsers(initialUsers)
   }, [initialUsers])
+
+  useEffect(() => {
+    const resetSearch = () => {
+      setSearchTerm("")
+      if (searchInputRef.current) {
+        searchInputRef.current.value = ""
+      }
+    }
+
+    resetSearch()
+    const timeoutId = window.setTimeout(resetSearch, 100)
+    window.addEventListener('pageshow', resetSearch)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.removeEventListener('pageshow', resetSearch)
+    }
+  }, [])
 
   const filteredUsers = users.filter(u => 
     u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -208,12 +229,13 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
 
   const handleDelete = async () => {
     if (!selectedUser) return
+    const targetUserId = selectedUser.id
 
     setLoading(true)
     try {
       const csrfToken = getCsrfToken()
 
-      const response = await fetch(`/users/${selectedUser.id}`, {
+      const response = await fetch(`/users/${targetUserId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -223,13 +245,26 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
       })
 
       if (response.ok) {
-        // Refresh the page to get updated data
-        window.location.reload()
+        setUsers((prev) => prev.filter((user) => user.id !== targetUserId))
+        toast({
+          title: 'Sukses',
+          description: 'Akun berhasil dihapus',
+        })
       } else {
+        toast({
+          title: 'Error',
+          description: 'Gagal menghapus akun',
+          variant: 'destructive',
+        })
         console.error('Failed to delete user')
       }
     } catch (error) {
       console.error('Error deleting user:', error)
+      toast({
+        title: 'Error',
+        description: 'Terjadi kesalahan saat menghapus akun',
+        variant: 'destructive',
+      })
     } finally {
       setLoading(false)
       setIsDeleteDialogOpen(false)
@@ -372,10 +407,21 @@ export default function KelolaPengguna({ users: initialUsers = [] }: Props) {
             <div className="relative">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
+                ref={searchInputRef}
+                type="search"
+                name="user-search"
+                autoComplete="off"
                 placeholder="Cari username atau email..."
                 className="pl-8"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  if (document.activeElement !== e.currentTarget) {
+                    e.currentTarget.value = searchTerm
+                    return
+                  }
+
+                  setSearchTerm(e.target.value)
+                }}
               />
             </div>
           </CardContent>

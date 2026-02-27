@@ -336,6 +336,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::middleware(['developer'])->group(function () {
+        Route::get('/developer/tools', fn () => Inertia::render('developer/developer-tools'))
+            ->name('developer.tools');
+
         Route::get('/developer/api', function () {
             return Inertia::render('kelola-pengguna', [
                 'users' => \App\Models\User::all()->map(function ($user) {
@@ -369,6 +372,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/developer/developer-management', fn () => Inertia::render('staff-developer-management'))
             ->name('developer.management');
+
+        Route::get('/developer/laporan-periode', fn () => Inertia::render('developer/developer-period-report'))
+            ->name('developer.laporan-periode');
     });
 
     Route::get('/laporan-bug', fn () => Inertia::render('laporan-bug'))
