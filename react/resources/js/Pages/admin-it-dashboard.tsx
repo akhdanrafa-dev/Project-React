@@ -29,6 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import AdminITLayout from '@/layouts/app/AdminITLayout'
+import { fetchWithCsrfRetry } from '@/lib/csrf'
 import type { SharedData } from '@/types'
 
 interface Ticket {
@@ -114,14 +115,10 @@ export default function AdminITDashboard() {
         return
       }
 
-      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-
-      const response = await fetch(`/api/bug-tickets/${ticketId}/take`, {
+      const response = await fetchWithCsrfRetry(`/api/bug-tickets/${ticketId}/take`, {
         method: 'PATCH',
-        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken || '',
           'Accept': 'application/json',
         },
         body: JSON.stringify({
@@ -134,7 +131,9 @@ export default function AdminITDashboard() {
         throw new Error(errorData.message || `Failed to take ticket (${response.status})`)
       }
       const updatedTicket = await response.json()
-      setTickets(tickets.map(t => t.id === ticketId ? updatedTicket : t))
+      setTickets((prevTickets) =>
+        prevTickets.map((ticket) => (ticket.id === ticketId ? updatedTicket : ticket)),
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     }

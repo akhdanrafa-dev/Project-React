@@ -134,6 +134,11 @@ const ensureCsrfCookie = async () => {
         },
         cache: 'no-store',
     });
+
+    const latestXsrfToken = getXsrfTokenFromCookie();
+    if (latestXsrfToken) {
+        updateCsrfToken(latestXsrfToken);
+    }
 };
 
 const buildCsrfHeaders = (headers?: HeadersInit) => {
@@ -141,11 +146,11 @@ const buildCsrfHeaders = (headers?: HeadersInit) => {
     const csrfToken = getCsrfToken();
     const xsrfToken = getXsrfTokenFromCookie();
 
-    if (csrfToken) {
-        merged.set('X-CSRF-TOKEN', csrfToken);
-    }
     if (xsrfToken) {
         merged.set('X-XSRF-TOKEN', xsrfToken);
+        merged.delete('X-CSRF-TOKEN');
+    } else if (csrfToken) {
+        merged.set('X-CSRF-TOKEN', csrfToken);
     }
     if (!merged.has('X-Requested-With')) {
         merged.set('X-Requested-With', 'XMLHttpRequest');

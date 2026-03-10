@@ -83,6 +83,53 @@ const normalizeTicket = (ticket: ApiBugTicket): BugTicket => ({
 
 const normalizeStatus = (status?: string) => status?.toLowerCase() ?? '';
 
+const parseDateInput = (value: string, endOfDay = false) => {
+    const [year, month, day] = value.split('-').map(Number);
+    if (!year || !month || !day) return null;
+
+    return new Date(
+        year,
+        month - 1,
+        day,
+        endOfDay ? 23 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 999 : 0,
+    );
+};
+
+const matchesDateRange = (
+    createdAtValue: string,
+    startDateInput: string,
+    endDateInput: string,
+) => {
+    const createdAt = new Date(createdAtValue);
+    if (Number.isNaN(createdAt.getTime())) return false;
+
+    const startDate = startDateInput ? parseDateInput(startDateInput) : null;
+    const endDate = endDateInput ? parseDateInput(endDateInput, true) : null;
+
+    if (startDate && endDate && startDate.getTime() > endDate.getTime()) {
+        return false;
+    }
+
+    if (startDate && createdAt.getTime() < startDate.getTime()) return false;
+    if (endDate && createdAt.getTime() > endDate.getTime()) return false;
+
+    return true;
+};
+
+const formatDateInputForDisplay = (value: string) => {
+    const parsedDate = parseDateInput(value);
+    if (!parsedDate) return value;
+
+    return parsedDate.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    });
+};
+
 const isDifficultyLocked = (status: string) =>
     ['in_progress', 'resolved'].includes(normalizeStatus(status));
 
@@ -104,6 +151,8 @@ function DeveloperToolsContent() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [reportStartDate, setReportStartDate] = useState('');
+    const [reportEndDate, setReportEndDate] = useState('');
     const [updatingTicketId, setUpdatingTicketId] = useState<number | null>(
         null,
     );
@@ -365,28 +414,66 @@ function DeveloperToolsContent() {
         [tickets],
     );
 
+    const isDateRangeInvalid = useMemo(() => {
+        if (!reportStartDate || !reportEndDate) return false;
+        const startDate = parseDateInput(reportStartDate);
+        const endDate = parseDateInput(reportEndDate, true);
+        if (!startDate || !endDate) return true;
+        return startDate.getTime() > endDate.getTime();
+    }, [reportEndDate, reportStartDate]);
+
+    const dateRangeSummary = useMemo(() => {
+        if (reportStartDate && reportEndDate) {
+            return `${formatDateInputForDisplay(reportStartDate)} - ${formatDateInputForDisplay(reportEndDate)}`;
+        }
+
+        if (reportStartDate) {
+            return `Dari ${formatDateInputForDisplay(reportStartDate)}`;
+        }
+
+        if (reportEndDate) {
+            return `Sampai ${formatDateInputForDisplay(reportEndDate)}`;
+        }
+
+        return 'Semua tanggal';
+    }, [reportEndDate, reportStartDate]);
+
     const statusCounts = useMemo(() => {
-        const open = activeTickets.filter(
+        const rangeFilteredTickets = activeTickets.filter((ticket) =>
+            matchesDateRange(
+                ticket.created_at,
+                reportStartDate,
+                reportEndDate,
+            ),
+        );
+        const open = rangeFilteredTickets.filter(
             (ticket) => normalizeStatus(ticket.status) === 'open',
         ).length;
-        const inProgress = activeTickets.filter(
+        const inProgress = rangeFilteredTickets.filter(
             (ticket) => normalizeStatus(ticket.status) === 'in_progress',
         ).length;
-        const resolved = activeTickets.filter(
+        const resolved = rangeFilteredTickets.filter(
             (ticket) => normalizeStatus(ticket.status) === 'resolved',
         ).length;
 
         return {
-            all: activeTickets.length,
+            all: rangeFilteredTickets.length,
             open,
             in_progress: inProgress,
             resolved,
         };
-    }, [activeTickets]);
+    }, [activeTickets, reportEndDate, reportStartDate]);
 
     const filteredTickets = useMemo(
         () =>
             activeTickets
+                .filter((ticket) =>
+                    matchesDateRange(
+                        ticket.created_at,
+                        reportStartDate,
+                        reportEndDate,
+                    ),
+                )
                 .filter((ticket) =>
                     statusFilter === 'all'
                         ? true
@@ -414,7 +501,7 @@ function DeveloperToolsContent() {
                         new Date(b.created_at).getTime()
                     );
                 }),
-        [activeTickets, searchQuery, statusFilter],
+        [activeTickets, reportEndDate, reportStartDate, searchQuery, statusFilter],
     );
 
     return (
@@ -480,7 +567,29 @@ function DeveloperToolsContent() {
                                 >
                                     Laporan Periode
                                 </Button>
-                    
+
+                                <Input
+                                    id="report-start-date"
+                                    type="date"
+                                    value={reportStartDate}
+                                    onChange={(event) =>
+                                        setReportStartDate(event.target.value)
+                                    }
+                                    className="h-9 w-[150px]"
+                                    aria-label="Tanggal awal periode"
+                                />
+
+                                <Input
+                                    id="report-end-date"
+                                    type="date"
+                                    value={reportEndDate}
+                                    onChange={(event) =>
+                                        setReportEndDate(event.target.value)
+                                    }
+                                    className="h-9 w-[150px]"
+                                    aria-label="Tanggal akhir periode"
+                                />
+
                                 <select
                                     id="status-filter"
                                     value={statusFilter}
@@ -495,7 +604,6 @@ function DeveloperToolsContent() {
                                     <option value="all">
                                         Semua laporan ({statusCounts.all})
                                     </option>
-                                  "
                                     <option value="open">
                                         Laporan masuk ({statusCounts.open})
                                     </option>
@@ -508,6 +616,13 @@ function DeveloperToolsContent() {
                                 </select>
                             </div>
                         </div>
+
+                        {isDateRangeInvalid ? (
+                            <p className="text-sm text-red-600">
+                                Tanggal awal harus lebih kecil atau sama dengan
+                                tanggal akhir.
+                            </p>
+                        ) : null}
 
                         <Separator />
 
@@ -660,9 +775,23 @@ function DeveloperToolsContent() {
                                                                         <Button
                                                                             size="sm"
                                                                             variant="outline"
-                                                                            className="h-8 gap-1.5"
+                                                                            className="h-8 max-w-[240px] gap-1.5"
                                                                         >
-                                                                            collab
+                                                                            <span className="truncate">
+                                                                                {workingAdmins.length >
+                                                                                0
+                                                                                    ? workingAdmins
+                                                                                          .map(
+                                                                                              (
+                                                                                                  admin,
+                                                                                              ) =>
+                                                                                                  admin.name,
+                                                                                          )
+                                                                                          .join(
+                                                                                              ', ',
+                                                                                          )
+                                                                                    : 'collab'}
+                                                                            </span>
                                                                             <ChevronDown className="h-3.5 w-3.5" />
                                                                         </Button>
                                                                     </DropdownMenuTrigger>
@@ -754,7 +883,8 @@ function DeveloperToolsContent() {
                         )}
 
                         <div className="text-sm text-muted-foreground">
-                            Total: {filteredTickets.length} bug ticket
+                            Total: {filteredTickets.length} bug ticket (
+                            {dateRangeSummary})
                         </div>
                     </CardContent>
                 </Card>

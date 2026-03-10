@@ -154,6 +154,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/api/bug-tickets/unread-count', [BugTicketController::class, 'getUnreadCount']);
     Route::get('/api/bug-tickets', [BugTicketController::class, 'index']);
     Route::post('/api/bug-tickets', [BugTicketController::class, 'store']);
+    Route::post('/api/bug-tickets/replace-period-import', [BugTicketController::class, 'replacePeriodFromImport'])
+        ->middleware('developer');
     Route::get('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'show']);
     Route::patch('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'update']);
     Route::delete('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'destroy']);
@@ -375,6 +377,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/developer/laporan-periode', fn () => Inertia::render('developer/developer-period-report'))
             ->name('developer.laporan-periode');
+
+        Route::get('/developer/history-laporan-ditutup', fn () => Inertia::render('developer/developer-closed-report-history'))
+            ->name('developer.history-laporan-ditutup');
     });
 
     Route::get('/laporan-bug', fn () => Inertia::render('laporan-bug'))

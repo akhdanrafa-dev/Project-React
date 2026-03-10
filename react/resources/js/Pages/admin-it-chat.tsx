@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import AdminITLayout from '@/layouts/app/AdminITLayout';
+import { fetchWithCsrfRetry } from '@/lib/csrf';
 import type { SharedData } from '@/types';
 
 interface ChatMessage {
@@ -76,14 +77,6 @@ interface Ticket {
 interface Props {
     ticketId: number;
 }
-
-const getCsrfToken = () => {
-    return (
-        document
-            .querySelector('meta[name="csrf-token"]')
-            ?.getAttribute('content') || ''
-    );
-};
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
@@ -170,13 +163,10 @@ export default function AdminITChat({ ticketId }: Props) {
 
     const markMessagesAsRead = async () => {
         try {
-            await fetch(
+            await fetchWithCsrfRetry(
                 `/api/bug-tickets/${ticketId}/messages/mark-all-as-read`,
                 {
                     method: 'PATCH',
-                    headers: {
-                        'X-CSRF-Token': getCsrfToken(),
-                    },
                 },
             );
         } catch (err) {
@@ -199,15 +189,13 @@ export default function AdminITChat({ ticketId }: Props) {
                 formData.append('image', selectedImage);
             }
 
-            const response = await fetch(
+            const response = await fetchWithCsrfRetry(
                 `/api/bug-tickets/${ticketId}/messages`,
                 {
                     method: 'POST',
                     headers: {
-                        'X-CSRF-Token': getCsrfToken(),
                         Accept: 'application/json',
                     },
-                    credentials: 'same-origin',
                     body: formData,
                 },
             );
@@ -284,16 +272,18 @@ export default function AdminITChat({ ticketId }: Props) {
     const handleResolveTicket = async () => {
         if (!ticket) return;
         try {
-            const response = await fetch(`/api/bug-tickets/${ticket.id}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': getCsrfToken(),
+            const response = await fetchWithCsrfRetry(
+                `/api/bug-tickets/${ticket.id}`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        status: 'resolved',
+                    }),
                 },
-                body: JSON.stringify({
-                    status: 'resolved',
-                }),
-            });
+            );
             if (!response.ok) throw new Error('Failed to resolve ticket');
             await fetchTicket();
         } catch (err) {
@@ -306,16 +296,18 @@ export default function AdminITChat({ ticketId }: Props) {
     const handleCloseTicket = async () => {
         if (!ticket) return;
         try {
-            const response = await fetch(`/api/bug-tickets/${ticket.id}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': getCsrfToken(),
+            const response = await fetchWithCsrfRetry(
+                `/api/bug-tickets/${ticket.id}`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        status: 'closed',
+                    }),
                 },
-                body: JSON.stringify({
-                    status: 'closed',
-                }),
-            });
+            );
             if (!response.ok) throw new Error('Failed to close ticket');
             await fetchTicket();
         } catch (err) {
@@ -329,16 +321,17 @@ export default function AdminITChat({ ticketId }: Props) {
         if (!ticket || !currentUserId) return;
 
         try {
-            const response = await fetch(`/api/bug-tickets/${ticket.id}/take`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': getCsrfToken(),
-                    Accept: 'application/json',
+            const response = await fetchWithCsrfRetry(
+                `/api/bug-tickets/${ticket.id}/take`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                    },
+                    body: JSON.stringify({ assigned_to: currentUserId }),
                 },
-                credentials: 'same-origin',
-                body: JSON.stringify({ assigned_to: currentUserId }),
-            });
+            );
 
             if (!response.ok) throw new Error('Gagal mengambil tiket');
             await fetchTicket();

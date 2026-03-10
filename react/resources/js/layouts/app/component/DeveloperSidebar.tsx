@@ -3,16 +3,12 @@
 import { usePage } from "@inertiajs/react"
 import {
   Code2,
-  Frame,
-  PieChart,
-  Map,
   Home,
   TrendingUp,
 } from "lucide-react"
 import * as React from "react"
 
 import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-project"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -32,6 +28,7 @@ const data = {
         { title: "Beranda", url: "/developer-dashboard", icon: Home },
         { title: "Kelola Pengguna", url: "/developer/api" },
         { title: "Laporan", url: "/laporan" },
+        { title: "History Ditutup", url: "/developer/history-laporan-ditutup" },
         { title: "Pantau Produk", url: "/developer/pantau-produk" },
         { title: "Manajemen Staff", url: "/developer/debug" },
         { title: "Ranking Admin", url: "/admin-it/ranking-admin", icon: TrendingUp },

@@ -4,9 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\BugTicket;
 use App\Models\ChatMessage;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class BugTicketController extends Controller
 {
@@ -30,7 +34,7 @@ class BugTicketController extends Controller
                         // Unassigned open tickets
                         ->where(function ($unassignedQuery) {
                             $unassignedQuery->whereNull('assigned_to')
-                                ->where('status', '!=', 'closed');
+                                ->where('status', 'open');
                         })
                         // Or tickets assigned to this admin
                         ->orWhere('assigned_to', $user->id);
@@ -55,6 +59,7 @@ class BugTicketController extends Controller
         }
 
         $tickets = $this->sanitizeTakeHistoryCollectionForViewer($tickets, $user);
+        $tickets = $this->appendCollaboratorsDetailsCollection($tickets);
 
         return response()->json($tickets);
     }
@@ -108,6 +113,194 @@ class BugTicketController extends Controller
         }
     }
 
+    public function replacePeriodFromImport(Request $request)
+    {
+        try {
+            $user = Auth::user();
+
+            if (!$user || $user->role !== 'developer') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Hanya developer yang dapat menyimpan data import periode.',
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'month' => 'required|integer|min:1|max:12',
+                'year' => 'required|integer|min:2000|max:2100',
+                'tickets' => 'required|array|min:1',
+                'tickets.*.ticket_number' => 'nullable|string|max:255',
+                'tickets.*.title' => 'nullable|string|max:255',
+                'tickets.*.description' => 'nullable|string',
+                'tickets.*.priority' => 'nullable|in:low,medium,high',
+                'tickets.*.difficulty_level' => 'nullable|in:easy,medium,hard',
+                'tickets.*.status' => 'nullable|in:open,in_progress,resolved,closed,diproses kembali',
+                'tickets.*.created_at' => 'required|date',
+                'tickets.*.user' => 'nullable|array',
+                'tickets.*.user.name' => 'nullable|string|max:255',
+                'tickets.*.user.email' => 'nullable|email|max:255',
+            ]);
+
+            $month = (int) $validated['month'];
+            $year = (int) $validated['year'];
+            $startOfPeriod = Carbon::create($year, $month, 1)->startOfDay();
+            $endOfPeriod = (clone $startOfPeriod)->endOfMonth();
+
+            $ticketsInPeriod = collect($validated['tickets'])
+                ->filter(function ($ticket) use ($month, $year) {
+                    $createdAt = Carbon::parse($ticket['created_at']);
+                    return (int) $createdAt->month === $month
+                        && (int) $createdAt->year === $year;
+                })
+                ->values();
+
+            if ($ticketsInPeriod->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Data import tidak memiliki tiket pada periode yang dipilih.',
+                ], 422);
+            }
+
+            $result = DB::transaction(function () use (
+                $startOfPeriod,
+                $endOfPeriod,
+                $ticketsInPeriod,
+                $user
+            ) {
+                $existingTickets = BugTicket::whereBetween('created_at', [
+                    $startOfPeriod,
+                    $endOfPeriod,
+                ])->get();
+
+                $deletedCount = $existingTickets->count();
+                foreach ($existingTickets as $existingTicket) {
+                    $existingTicket->forceDelete();
+                }
+
+                $usedTicketNumbers = BugTicket::withTrashed()
+                    ->whereNotNull('ticket_number')
+                    ->pluck('ticket_number')
+                    ->all();
+                $usedTicketNumberMap = array_fill_keys($usedTicketNumbers, true);
+                $nextTicketSequenceByPeriod = [];
+
+                foreach ($usedTicketNumbers as $existingTicketNumber) {
+                    if (
+                        preg_match(
+                            '/^TKT-(\d{6})-(\d{4})$/',
+                            (string) $existingTicketNumber,
+                            $matches,
+                        ) === 1
+                    ) {
+                        $periodKey = $matches[1];
+                        $nextSequence = ((int) $matches[2]) + 1;
+
+                        if (
+                            !isset($nextTicketSequenceByPeriod[$periodKey]) ||
+                            $nextSequence > $nextTicketSequenceByPeriod[$periodKey]
+                        ) {
+                            $nextTicketSequenceByPeriod[$periodKey] = $nextSequence;
+                        }
+                    }
+                }
+
+                $generateUniqueTicketNumber = function (Carbon $ticketCreatedAt) use (
+                    &$usedTicketNumberMap,
+                    &$nextTicketSequenceByPeriod
+                ) {
+                    $periodKey = $ticketCreatedAt->format('Ym');
+                    $nextSequence = $nextTicketSequenceByPeriod[$periodKey] ?? 1;
+
+                    do {
+                        $candidateTicketNumber = sprintf(
+                            'TKT-%s-%04d',
+                            $periodKey,
+                            $nextSequence,
+                        );
+                        $nextSequence += 1;
+                    } while (isset($usedTicketNumberMap[$candidateTicketNumber]));
+
+                    $nextTicketSequenceByPeriod[$periodKey] = $nextSequence;
+                    $usedTicketNumberMap[$candidateTicketNumber] = true;
+
+                    return $candidateTicketNumber;
+                };
+
+                $createdCount = 0;
+                foreach ($ticketsInPeriod as $ticketData) {
+                    $createdAt = Carbon::parse($ticketData['created_at']);
+                    $reporterEmail = data_get($ticketData, 'user.email');
+                    $reporter = $reporterEmail
+                        ? User::where('email', $reporterEmail)->first()
+                        : null;
+
+                    $ticket = new BugTicket();
+                    $ticket->user_id = $reporter?->id ?? $user->id;
+                    $ticket->title = trim((string) ($ticketData['title'] ?? '')) !== ''
+                        ? (string) $ticketData['title']
+                        : 'Laporan Import';
+                    $ticket->description = (string) (
+                        $ticketData['description'] ??
+                        'Data laporan periode hasil import.'
+                    );
+                    $ticket->category = 'bug';
+                    $ticket->priority = (string) ($ticketData['priority'] ?? 'medium');
+                    $ticket->difficulty_level = (string) ($ticketData['difficulty_level'] ?? 'medium');
+                    $ticket->status = (string) ($ticketData['status'] ?? 'open');
+                    $ticket->assigned_to = null;
+                    $ticket->taken_at = null;
+                    $ticket->resolved_at = in_array(
+                        $ticket->status,
+                        ['resolved', 'closed'],
+                        true,
+                    ) ? $createdAt : null;
+                    $ticket->appeal_count = 0;
+
+                    $requestedTicketNumber = trim((string) ($ticketData['ticket_number'] ?? ''));
+                    if (
+                        $requestedTicketNumber !== '' &&
+                        !isset($usedTicketNumberMap[$requestedTicketNumber])
+                    ) {
+                        $ticket->ticket_number = $requestedTicketNumber;
+                        $usedTicketNumberMap[$requestedTicketNumber] = true;
+                    } else {
+                        $ticket->ticket_number = $generateUniqueTicketNumber(
+                            $createdAt,
+                        );
+                    }
+
+                    $ticket->created_at = $createdAt;
+                    $ticket->updated_at = $createdAt;
+                    $ticket->save();
+
+                    $createdCount += 1;
+                }
+
+                return [
+                    'deleted_count' => $deletedCount,
+                    'created_count' => $createdCount,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data periode berhasil diperbarui.',
+                ...$result,
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi data import gagal.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyimpan data import: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function show(BugTicket $bugTicket)
     {
         $user = Auth::user();
@@ -118,6 +311,7 @@ class BugTicketController extends Controller
         $this->authorize('view', $bugTicket);
         $bugTicket->load(['messages.user', 'user', 'assignedAdmin']);
         $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
+        $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
 
         return response()->json($bugTicket);
     }
@@ -229,6 +423,7 @@ class BugTicketController extends Controller
 
             $bugTicket->load(['user', 'assignedAdmin', 'messages.user']);
             $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
+            $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
 
             return response()->json($bugTicket);
 
@@ -589,6 +784,7 @@ class BugTicketController extends Controller
             $bugTicket->refresh();
             $bugTicket->load(['user', 'assignedAdmin']);
             $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
+            $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
 
             return response()->json($bugTicket);
 
@@ -944,6 +1140,63 @@ class BugTicketController extends Controller
         });
     }
 
+    private function appendCollaboratorsDetailsCollection($tickets)
+    {
+        $normalizedTickets = collect($tickets);
+
+        $collaboratorIds = $normalizedTickets
+            ->flatMap(function (BugTicket $ticket) {
+                return collect($ticket->collaborators ?? [])
+                    ->map(fn ($id) => (int) $id);
+            })
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($collaboratorIds->isEmpty()) {
+            return $normalizedTickets->map(function (BugTicket $ticket) {
+                $ticket->setAttribute('collaborators_details', []);
+                return $ticket;
+            });
+        }
+
+        $collaboratorsById = User::whereIn('id', $collaboratorIds->all())
+            ->get(['id', 'name', 'email'])
+            ->keyBy('id');
+
+        return $normalizedTickets->map(function (BugTicket $ticket) use ($collaboratorsById) {
+            $details = collect($ticket->collaborators ?? [])
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn (int $id) => $id > 0)
+                ->unique()
+                ->map(function (int $id) use ($collaboratorsById) {
+                    $collaborator = $collaboratorsById->get($id);
+                    if (!$collaborator) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => (int) $collaborator->id,
+                        'name' => $collaborator->name,
+                        'email' => $collaborator->email,
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+
+            $ticket->setAttribute('collaborators_details', $details);
+
+            return $ticket;
+        });
+    }
+
+    private function appendCollaboratorsDetailsForTicket(BugTicket $ticket): BugTicket
+    {
+        $ticket->setAttribute('collaborators_details', $ticket->getCollaboratorsDetails());
+        return $ticket;
+    }
+
     private function orWhereCollaboratorContains($query, int $adminId)
     {
         return $query->orWhere(function ($collaboratorQuery) use ($adminId) {
@@ -1028,10 +1281,10 @@ class BugTicketController extends Controller
             }
         }
 
-        if (!$ticket->assigned_to && $ticket->status === 'closed') {
+        if (!$ticket->assigned_to && $ticket->status !== 'open') {
             return response()->json([
                 'error' => 'Forbidden',
-                'message' => 'Tiket yang sudah ditutup tidak dapat diakses.',
+                'message' => 'Tiket tanpa admin handler tidak dapat diakses pada status ini.',
             ], 403);
         }
 

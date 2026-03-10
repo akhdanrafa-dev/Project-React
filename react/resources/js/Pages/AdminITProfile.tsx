@@ -43,6 +43,105 @@ const getCsrfToken = () => {
     );
 };
 
+const updateCsrfToken = (newToken: string) => {
+    const metaTag = document.querySelector('meta[name="csrf-token"]');
+    if (metaTag && newToken) {
+        metaTag.setAttribute('content', newToken);
+    }
+};
+
+const getCookie = (name: string) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) {
+        return parts.pop()?.split(';').shift() || '';
+    }
+    return '';
+};
+
+const getXsrfTokenFromCookie = () => {
+    const raw = getCookie('XSRF-TOKEN');
+    try {
+        return decodeURIComponent(raw);
+    } catch {
+        return raw;
+    }
+};
+
+const syncCsrfTokenFromResponse = (response: Response) => {
+    const nextToken =
+        response.headers.get('X-CSRF-Token') ||
+        response.headers.get('x-csrf-token');
+    if (nextToken) {
+        updateCsrfToken(nextToken);
+    }
+};
+
+const ensureCsrfCookie = async () => {
+    await fetch('/sanctum/csrf-cookie', {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        cache: 'no-store',
+    });
+
+    const latestXsrfToken = getXsrfTokenFromCookie();
+    if (latestXsrfToken) {
+        updateCsrfToken(latestXsrfToken);
+    }
+};
+
+const buildCsrfHeaders = (headers?: HeadersInit) => {
+    const merged = new Headers(headers || {});
+    const csrfToken = getCsrfToken();
+    const xsrfToken = getXsrfTokenFromCookie();
+
+    if (xsrfToken) {
+        merged.set('X-XSRF-TOKEN', xsrfToken);
+        merged.delete('X-CSRF-TOKEN');
+    } else if (csrfToken) {
+        merged.set('X-CSRF-TOKEN', csrfToken);
+    }
+    if (!merged.has('X-Requested-With')) {
+        merged.set('X-Requested-With', 'XMLHttpRequest');
+    }
+
+    return merged;
+};
+
+const fetchWithCsrfRetry = async (
+    url: string,
+    init: RequestInit,
+    allowRetry = true,
+) => {
+    let response = await fetch(url, {
+        ...init,
+        credentials: init.credentials || 'same-origin',
+        headers: buildCsrfHeaders(init.headers),
+    });
+    syncCsrfTokenFromResponse(response);
+
+    if (response.status === 419 && allowRetry) {
+        try {
+            await ensureCsrfCookie();
+        } catch {
+            // Keep retry path even when refresh fails.
+        }
+
+        response = await fetch(url, {
+            ...init,
+            credentials: init.credentials || 'same-origin',
+            headers: buildCsrfHeaders(init.headers),
+        });
+        syncCsrfTokenFromResponse(response);
+    }
+
+    return response;
+};
+
 const getTodayIsoDate = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -133,11 +232,12 @@ export default function AdminITProfile({ admin }: Props) {
         setFormError(null);
 
         try {
-            const response = await fetch(`/api/admin-it/profile/${profile.id}`, {
+            const response = await fetchWithCsrfRetry(
+                `/api/admin-it/profile/${profile.id}`,
+                {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-Token': getCsrfToken(),
                     Accept: 'application/json',
                 },
                 credentials: 'same-origin',
@@ -146,7 +246,8 @@ export default function AdminITProfile({ admin }: Props) {
                     date_of_birth: dateOfBirthInput || null,
                     address: addressInput,
                 }),
-            });
+                },
+            );
 
             const data = await response.json().catch(() => null);
             if (!response.ok) {
