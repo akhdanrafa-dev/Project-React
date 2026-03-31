@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Clock, TrendingUp } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { BugReportChat } from '@/components/bug-report-chat'
+import { TicketEstimateDialog } from '@/components/ticket-estimate-dialog'
 import { Badge } from '@/components/ui/badge'
 import {
   Breadcrumb,
@@ -30,6 +31,15 @@ import {
 } from '@/components/ui/table'
 import AdminITLayout from '@/layouts/app/AdminITLayout'
 import { fetchWithCsrfRetry } from '@/lib/csrf'
+import { TicketEstimateData } from '@/lib/ticket-estimate'
+import {
+  getPendingEstimateDeadline,
+  getPendingEstimateRemainingLabel,
+  getTicketStatusLabel,
+  normalizeTicketStatus,
+  TICKET_STATUS,
+} from '@/lib/ticket-status'
+import { formatTicketLocalDateTime } from '@/lib/ticket-timing'
 import type { SharedData } from '@/types'
 
 interface Ticket {
@@ -39,9 +49,10 @@ interface Ticket {
   description: string
   status: string
   priority: string
-  difficulty_level: string
+  difficulty_level?: string | null
   category: string
   created_at: string
+  taken_at?: string | null
   user_id: number
   user: {
     id: number
@@ -50,28 +61,28 @@ interface Ticket {
   }
   assigned_to: number | null
   appeal_count?: number
-}
-
-interface Stats {
-  total_open: number
-  total_in_progress: number
-  total_resolved: number
-  total_closed: number
+  estimated_completion_at?: string | null
+  estimate_updated_at?: string | null
+  estimate_change_reason?: string | null
+  estimateUpdatedBy?: {
+    id: number
+    name: string
+  } | null
+  estimate_updated_by_user?: {
+    id: number
+    name: string
+  } | null
 }
 
 export default function AdminITDashboard() {
   const { auth } = usePage<SharedData>().props
   const [tickets, setTickets] = useState<Ticket[]>([])
-  const [stats, setStats] = useState<Stats>({
-    total_open: 0,
-    total_in_progress: 0,
-    total_resolved: 0,
-    total_closed: 0,
-  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
+  const [selectedEstimateTicket, setSelectedEstimateTicket] = useState<Ticket | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const currentUserId = auth.user?.id ?? 0
 
   const openTicketChat = (ticket: Ticket) => {
@@ -89,14 +100,6 @@ export default function AdminITDashboard() {
         }
         const data = await response.json()
         setTickets(data)
-
-        const statsData = {
-          total_open: data.filter((t: Ticket) => t.status === 'open').length,
-          total_in_progress: data.filter((t: Ticket) => t.status === 'in_progress').length,
-          total_resolved: data.filter((t: Ticket) => t.status === 'resolved').length,
-          total_closed: data.filter((t: Ticket) => t.status === 'closed').length,
-        }
-        setStats(statsData)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred')
       } finally {
@@ -105,6 +108,45 @@ export default function AdminITDashboard() {
     }
 
     fetchTickets()
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchUnreadNotificationCount = async () => {
+      try {
+        const response = await fetch('/api/admin-it/notifications/unread-count', {
+          cache: 'no-store',
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch unread notifications')
+        }
+
+        const data = await response.json()
+
+        if (isMounted) {
+          setUnreadNotificationCount(Number(data.unread_count ?? 0))
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+
+    fetchUnreadNotificationCount()
+
+    const interval = setInterval(fetchUnreadNotificationCount, 15000)
+    const handleFocus = () => {
+      fetchUnreadNotificationCount()
+    }
+
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [])
 
   const handleTakeTicket = async (ticketId: number) => {
@@ -123,7 +165,6 @@ export default function AdminITDashboard() {
         },
         body: JSON.stringify({
           assigned_to: userId,
-          status: 'in_progress',
         }),
       })
       if (!response.ok) {
@@ -156,6 +197,8 @@ export default function AdminITDashboard() {
     switch (status) {
       case 'open':
         return 'bg-blue-100 text-blue-800'
+      case 'pending_estimate':
+        return 'bg-amber-100 text-amber-800'
       case 'in_progress':
         return 'bg-purple-100 text-purple-800'
       case 'resolved':
@@ -173,10 +216,12 @@ export default function AdminITDashboard() {
     switch (status) {
       case 'open':
         return 'Terbuka'
+      case 'pending_estimate':
+        return 'Menunggu Estimasi Pengerjaan'
       case 'in_progress':
-        return 'Dalam Proses'
+        return 'Sedang Diproses'
       case 'resolved':
-        return 'Terselesaikan'
+        return 'Menunggu Verifikasi'
       case 'diproses kembali':
         return 'Diproses Kembali'
       case 'closed':
@@ -186,7 +231,7 @@ export default function AdminITDashboard() {
     }
   }
 
-  const getDifficultyColor = (difficulty: string) => {
+  const getDifficultyColor = (difficulty?: string | null) => {
     switch (difficulty) {
       case 'easy':
         return 'bg-green-100 text-green-800'
@@ -199,6 +244,37 @@ export default function AdminITDashboard() {
     }
   }
 
+  const getDifficultyLabel = (difficulty?: string | null) => {
+    switch (difficulty) {
+      case 'easy':
+        return 'Mudah'
+      case 'medium':
+        return 'Sedang'
+      case 'hard':
+        return 'Sulit'
+      default:
+        return 'Belum di tentukan'
+    }
+  }
+
+  const openTickets = tickets.filter(
+    (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.OPEN,
+  )
+  const pendingEstimateTickets = tickets.filter(
+    (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.PENDING_ESTIMATE,
+  )
+  const myPendingEstimateTickets = pendingEstimateTickets.filter(
+    (ticket) => ticket.assigned_to === currentUserId,
+  )
+  const inProgressTickets = tickets.filter(
+    (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.IN_PROGRESS,
+  )
+  const resolvedTickets = tickets.filter(
+    (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.RESOLVED,
+  )
+  const closedTickets = tickets.filter(
+    (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.CLOSED,
+  )
   if (loading) {
     return (
       <AdminITLayout>
@@ -245,36 +321,68 @@ export default function AdminITDashboard() {
         )}
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {unreadNotificationCount > 0 && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardHeader>
+              <CardTitle className="text-base text-amber-900">
+                Notifikasi Baru
+              </CardTitle>
+              <CardDescription className="text-amber-800">
+                Anda mendapat notifikasi baru.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p className="text-sm text-amber-900">
+                {unreadNotificationCount} notifikasi tiket belum dibaca.
+              </p>
+              <Button asChild type="button" variant="outline">
+                <a href="/admin-it/notifications">Buka riwayat notifikasi</a>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Tiket Terbuka</CardTitle>
               <AlertCircle className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total_open}</div>
+              <div className="text-2xl font-bold">{openTickets.length}</div>
               <p className="text-xs text-muted-foreground">Menunggu penugasan</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Dalam Proses</CardTitle>
+              <CardTitle className="text-sm font-medium">Menunggu Estimasi Pengerjaan</CardTitle>
+              <Clock className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{pendingEstimateTickets.length}</div>
+              <p className="text-xs text-muted-foreground">Sudah diambil, estimasi belum diatur</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Sedang Diproses</CardTitle>
               <Clock className="h-4 w-4 text-purple-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total_in_progress}</div>
+              <div className="text-2xl font-bold">{inProgressTickets.length}</div>
               <p className="text-xs text-muted-foreground">Sedang ditangani</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Terselesaikan</CardTitle>
+              <CardTitle className="text-sm font-medium">Menunggu Verifikasi</CardTitle>
               <CheckCircle2 className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total_resolved}</div>
+              <div className="text-2xl font-bold">{resolvedTickets.length}</div>
               <p className="text-xs text-muted-foreground">Masalah terpecahkan</p>
             </CardContent>
           </Card>
@@ -285,7 +393,7 @@ export default function AdminITDashboard() {
               <TrendingUp className="h-4 w-4 text-gray-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total_closed}</div>
+              <div className="text-2xl font-bold">{closedTickets.length}</div>
               <p className="text-xs text-muted-foreground">Tiket ditutup</p>
             </CardContent>
           </Card>
@@ -311,14 +419,12 @@ export default function AdminITDashboard() {
                     <TableHead>Kesulitan</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Pengguna</TableHead>
-                    <TableHead>Dibuat</TableHead>
+                    <TableHead>Waktu Masuk</TableHead>
                     <TableHead>Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tickets
-                    .filter(ticket => ticket.status === 'open')
-                    .map(ticket => (
+                  {openTickets.map(ticket => (
                       <TableRow key={ticket.id}>
                         <TableCell className="font-mono text-sm">
                           {ticket.ticket_number}
@@ -338,12 +444,12 @@ export default function AdminITDashboard() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={getDifficultyColor(ticket.difficulty_level)}>
-                            {ticket.difficulty_level === 'easy' ? 'Mudah' : ticket.difficulty_level === 'medium' ? 'Sedang' : 'Sulit'}
+                            {getDifficultyLabel(ticket.difficulty_level)}
                           </Badge>
                         </TableCell>
                         <TableCell>
                           <Badge className={getStatusColor(ticket.status)}>
-                            {ticket.status === 'open' ? 'Terbuka' : ticket.status}
+                            {getTicketStatusLabel(ticket.status)}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -355,7 +461,7 @@ export default function AdminITDashboard() {
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {new Date(ticket.created_at).toLocaleDateString('id-ID')}
+                          {formatTicketLocalDateTime(ticket.created_at)}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -370,7 +476,7 @@ export default function AdminITDashboard() {
                     ))}
                 </TableBody>
               </Table>
-              {tickets.filter(t => t.status === 'open').length === 0 && (
+              {openTickets.length === 0 && (
                 <div className="flex items-center justify-center h-32">
                   <p className="text-muted-foreground">Tidak ada tiket terbuka</p>
                 </div>
@@ -382,9 +488,9 @@ export default function AdminITDashboard() {
         {/* My Current Tickets */}
         <Card>
           <CardHeader>
-            <CardTitle>Tiket Saya yang Sedang Diproses</CardTitle>
+            <CardTitle>Tiket Saya yang Menunggu Estimasi Pengerjaan</CardTitle>
             <CardDescription>
-              Daftar tiket yang sedang Anda tangani
+              Tiket yang sudah Anda ambil namun estimasi selesai belum ditentukan
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -399,14 +505,13 @@ export default function AdminITDashboard() {
                     <TableHead>Kesulitan</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Pengguna</TableHead>
-                    <TableHead>Dibuat</TableHead>
+                    <TableHead>Waktu Masuk</TableHead>
+                    <TableHead>Batas Atur Estimasi</TableHead>
                     <TableHead>Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tickets
-                    .filter(ticket => ticket.status === 'in_progress' && ticket.assigned_to === currentUserId)
-                    .map(ticket => (
+                  {myPendingEstimateTickets.map(ticket => (
                       <TableRow key={ticket.id}>
                         <TableCell className="font-mono text-sm">
                           {ticket.ticket_number}
@@ -426,7 +531,7 @@ export default function AdminITDashboard() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={getDifficultyColor(ticket.difficulty_level)}>
-                            {ticket.difficulty_level === 'easy' ? 'Mudah' : ticket.difficulty_level === 'medium' ? 'Sedang' : 'Sulit'}
+                            {getDifficultyLabel(ticket.difficulty_level)}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -443,25 +548,35 @@ export default function AdminITDashboard() {
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {new Date(ticket.created_at).toLocaleDateString('id-ID')}
+                          {formatTicketLocalDateTime(ticket.created_at)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">
+                              {formatTicketLocalDateTime(getPendingEstimateDeadline(ticket))}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {getPendingEstimateRemainingLabel(ticket) ?? '-'}
+                            </p>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Button
                             variant="outline"
                             size="sm"
                             className="cursor-pointer"
-                            onClick={() => openTicketChat(ticket)}
+                            onClick={() => setSelectedEstimateTicket(ticket)}
                           >
-                            Buka Chat
+                            Atur Estimasi
                           </Button>
                         </TableCell>
                       </TableRow>
                     ))}
                 </TableBody>
               </Table>
-              {tickets.filter(t => t.status === 'in_progress' && t.assigned_to === currentUserId).length === 0 && (
+              {myPendingEstimateTickets.length === 0 && (
                 <div className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Tidak ada tiket yang sedang diproses</p>
+                  <p className="text-muted-foreground">Tidak ada tiket yang belum diproses</p>
                 </div>
               )}
             </div>
@@ -515,7 +630,7 @@ export default function AdminITDashboard() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={getDifficultyColor(ticket.difficulty_level)}>
-                            {ticket.difficulty_level === 'easy' ? 'Mudah' : ticket.difficulty_level === 'medium' ? 'Sedang' : 'Sulit'}
+                            {getDifficultyLabel(ticket.difficulty_level)}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -570,6 +685,24 @@ export default function AdminITDashboard() {
         ticket={selectedTicket}
         currentUserId={currentUserId}
         currentUserRole={typeof auth.user?.role === "string" ? auth.user.role : ""}
+      />
+      <TicketEstimateDialog
+        open={Boolean(selectedEstimateTicket)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedEstimateTicket(null)
+          }
+        }}
+        ticket={selectedEstimateTicket as TicketEstimateData}
+        currentUserRole={typeof auth.user?.role === 'string' ? auth.user.role : ''}
+        currentUserId={currentUserId}
+        onUpdated={(updatedTicket) => {
+          const typedTicket = updatedTicket as Ticket
+          setTickets((prevTickets) =>
+            prevTickets.map((ticket) => (ticket.id === typedTicket.id ? typedTicket : ticket)),
+          )
+          setSelectedEstimateTicket(typedTicket)
+        }}
       />
     </AdminITLayout>
   )

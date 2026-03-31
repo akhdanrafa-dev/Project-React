@@ -117,7 +117,7 @@ export default function AdminITStatistics() {
   ]
 
   const resolutionData = [
-    { name: 'Terselesaikan', value: stats.resolved_count },
+    { name: 'Menunggu Verifikasi', value: stats.resolved_count },
     { name: 'Dalam Proses', value: stats.in_progress_count },
   ]
   const difficultyTotal =
@@ -172,7 +172,7 @@ export default function AdminITStatistics() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Terselesaikan</CardTitle>
+              <CardTitle className="text-sm font-medium">Menunggu Verifikasi</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.resolved_count}</div>

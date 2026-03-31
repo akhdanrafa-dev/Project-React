@@ -77,4 +77,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(ChatMessage::class, 'user_id');
     }
+
+    public function adminItNotifications(): HasMany
+    {
+        return $this->hasMany(AdminItNotification::class);
+    }
 }

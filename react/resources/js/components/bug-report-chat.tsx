@@ -1,6 +1,7 @@
-import { ImagePlus, Loader2, Send, X } from 'lucide-react';
+import { Clock3, ImagePlus, Loader2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { TicketEstimateDialog } from '@/components/ticket-estimate-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,10 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
+import {
+    formatTicketEstimate,
+    TicketEstimateData,
+} from '@/lib/ticket-estimate';
 
 interface ChatMessage {
     id: number;
@@ -50,6 +55,17 @@ interface BugTicket {
     } | null;
     created_at: string;
     appeal_count?: number;
+    estimated_completion_at?: string | null;
+    estimate_updated_at?: string | null;
+    estimate_change_reason?: string | null;
+    estimateUpdatedBy?: {
+        id: number;
+        name: string;
+    } | null;
+    estimate_updated_by_user?: {
+        id: number;
+        name: string;
+    } | null;
     messages?: ChatMessage[];
 }
 
@@ -95,6 +111,17 @@ export function BugReportChat({
     const [markingAsResolved, setMarkingAsResolved] = useState(false);
     const [reopeningForUpdate, setReopeningForUpdate] = useState(false);
     const [localStatus, setLocalStatus] = useState('');
+    const [estimateDialogOpen, setEstimateDialogOpen] = useState(false);
+    const [estimateMeta, setEstimateMeta] = useState<
+        Pick<
+            BugTicket,
+            | 'estimated_completion_at'
+            | 'estimate_updated_at'
+            | 'estimate_change_reason'
+            | 'estimateUpdatedBy'
+            | 'estimate_updated_by_user'
+        >
+    >({});
     const [selectedImage, setSelectedImage] = useState<File | null>(null);
     const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<
         string | null
@@ -124,6 +151,23 @@ export function BugReportChat({
     useEffect(() => {
         setLocalStatus(ticket?.status ?? '');
     }, [ticket?.id, ticket?.status]);
+
+    useEffect(() => {
+        setEstimateMeta({
+            estimated_completion_at: ticket?.estimated_completion_at ?? null,
+            estimate_updated_at: ticket?.estimate_updated_at ?? null,
+            estimate_change_reason: ticket?.estimate_change_reason ?? null,
+            estimateUpdatedBy: ticket?.estimateUpdatedBy ?? null,
+            estimate_updated_by_user: ticket?.estimate_updated_by_user ?? null,
+        });
+    }, [
+        ticket?.id,
+        ticket?.estimated_completion_at,
+        ticket?.estimate_updated_at,
+        ticket?.estimate_change_reason,
+        ticket?.estimateUpdatedBy,
+        ticket?.estimate_updated_by_user,
+    ]);
 
     useEffect(() => {
         return () => {
@@ -462,7 +506,7 @@ export function BugReportChat({
             toast({
                 title: 'Sukses',
                 description:
-                    'Tiket telah diubah kembali ke status Terselesaikan.',
+                    'Tiket telah diubah kembali ke status Menunggu Verifikasi.',
             });
 
             setLocalStatus('resolved');
@@ -514,7 +558,7 @@ export function BugReportChat({
             toast({
                 title: 'Sukses',
                 description:
-                    'Status tiket diubah ke Dalam Proses. Anda dapat memperbarui solusi melalui chat.',
+                    'Status tiket diubah ke Sedang Diproses. Anda dapat memperbarui solusi melalui chat.',
             });
         } catch (error) {
             toast({
@@ -532,6 +576,10 @@ export function BugReportChat({
 
     if (!ticket) return null;
     const status = localStatus || ticket.status;
+    const ticketWithEstimate = {
+        ...ticket,
+        ...estimateMeta,
+    } as BugTicket;
 
     const isAdminIT = currentUserRole === 'admin_it';
     const isTicketOwner = ticket.user_id === currentUserId;
@@ -564,12 +612,12 @@ export function BugReportChat({
             case 'in_progress':
                 return 'Sedang Diproses';
             case 'resolved':
-                return 'Terselesaikan';
+                return 'Menunggu Verifikasi';
             case 'closed':
                 return 'Ditutup';
             default:
                 if (status.startsWith('resolved')) {
-                    return status.replace('resolved', 'Terselesaikan');
+                    return status.replace('resolved', 'Menunggu Verifikasi');
                 }
                 if (status === 'diproses kembali') {
                     return 'Diproses Kembali';
@@ -605,9 +653,10 @@ export function BugReportChat({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="flex max-h-[90vh] max-w-[90vw] flex-col sm:max-w-3xl">
-                <DialogHeader>
+        <>
+            <Dialog open={open} onOpenChange={onOpenChange}>
+                <DialogContent className="flex max-h-[90vh] max-w-[90vw] flex-col sm:max-w-3xl">
+                    <DialogHeader>
                     <div className="mb-2 flex items-center gap-3">
                         <span className="inline-flex items-center rounded-full bg-blue-600 px-3 py-1 text-[10px] font-bold text-white shadow-sm md:text-xs">
                             No. Tiket: {ticket.ticket_number || `#${ticket.id}`}
@@ -630,6 +679,16 @@ export function BugReportChat({
                         <Badge className={getStatusColor(status)}>
                             {getStatusLabel(status)}
                         </Badge>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-xs"
+                            onClick={() => setEstimateDialogOpen(true)}
+                        >
+                            <Clock3 className="h-3.5 w-3.5" />
+                            Estimasi
+                        </Button>
                     </div>
                     {isTicketOwner && ticket.assigned_to ? (
                         <p className="mt-2 text-xs text-muted-foreground">
@@ -639,6 +698,14 @@ export function BugReportChat({
                             </span>
                         </p>
                     ) : null}
+                    <div className="mt-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">
+                            Estimasi selesai:
+                        </span>{' '}
+                        {formatTicketEstimate(
+                            ticketWithEstimate.estimated_completion_at,
+                        )}
+                    </div>
                 </DialogHeader>
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1028,8 +1095,37 @@ export function BugReportChat({
                             </>
                         )}
                     </div>
-                </div>
-            </DialogContent>
-        </Dialog>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            <TicketEstimateDialog
+                open={estimateDialogOpen}
+                onOpenChange={setEstimateDialogOpen}
+                ticket={ticketWithEstimate as TicketEstimateData}
+                currentUserRole={currentUserRole}
+                currentUserId={currentUserId}
+                onUpdated={(updatedTicket) => {
+                    const typedTicket = updatedTicket as BugTicket;
+
+                    setEstimateMeta({
+                        estimated_completion_at:
+                            typedTicket.estimated_completion_at ?? null,
+                        estimate_updated_at:
+                            typedTicket.estimate_updated_at ?? null,
+                        estimate_change_reason:
+                            typedTicket.estimate_change_reason ?? null,
+                        estimateUpdatedBy: typedTicket.estimateUpdatedBy ?? null,
+                        estimate_updated_by_user:
+                            typedTicket.estimate_updated_by_user ?? null,
+                    });
+
+                    if (Array.isArray(typedTicket.messages)) {
+                        setMessages(typedTicket.messages);
+                    } else {
+                        void fetchMessages();
+                    }
+                }}
+            />
+        </>
     );
 }

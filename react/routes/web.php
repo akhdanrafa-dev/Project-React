@@ -16,6 +16,7 @@ use App\Http\Controllers\AdminITController;
 use App\Http\Controllers\StaffProdukController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\AlertController;
+use App\Http\Controllers\AdminItNotificationController;
 use App\Models\Category;
 use App\Models\Product;
 
@@ -119,6 +120,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/admin-it/tickets', fn () => Inertia::render('admin-it-tickets'))
             ->name('admin-it.tickets');
 
+        Route::get('/admin-it/notifications', fn () => Inertia::render('admin-it-notifications'))
+            ->name('admin-it.notifications');
+
         Route::get('/admin-it/chats', fn () => Inertia::render('admin-it-chats'))
             ->name('admin-it.chats');
 
@@ -130,6 +134,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 'ticketId' => (int) $ticketId,
             ]);
         })->name('admin-it.chat');
+
+        Route::get(
+            '/api/admin-it/notifications',
+            [AdminItNotificationController::class, 'index'],
+        )->name('admin-it.notifications.index');
+        Route::get(
+            '/api/admin-it/notifications/unread-count',
+            [AdminItNotificationController::class, 'unreadCount'],
+        )->name('admin-it.notifications.unread-count');
+        Route::patch(
+            '/api/admin-it/notifications/read-all',
+            [AdminItNotificationController::class, 'markAllAsRead'],
+        )->name('admin-it.notifications.read-all');
+        Route::patch(
+            '/api/admin-it/notifications/{notification}/read',
+            [AdminItNotificationController::class, 'markAsRead'],
+        )->name('admin-it.notifications.read');
     });
 
     Route::get('/admin-it/ranking-admin', function () {
@@ -158,6 +179,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('developer');
     Route::get('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'show']);
     Route::patch('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'update']);
+    Route::patch('/api/bug-tickets/{bugTicket}/estimate', [BugTicketController::class, 'updateEstimate']);
     Route::delete('/api/bug-tickets/{bugTicket}', [BugTicketController::class, 'destroy']);
     Route::patch('/api/bug-tickets/{bugTicket}/mark-as-read', [BugTicketController::class, 'markTicketAsRead']);
     Route::patch('/api/bug-tickets/{bugTicket}/take', [BugTicketController::class, 'take']);

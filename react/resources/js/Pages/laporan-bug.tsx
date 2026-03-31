@@ -1,5 +1,5 @@
 import { usePage } from "@inertiajs/react"
-import { Loader2, Plus, MessageSquare, Trash2 } from "lucide-react"
+import { Loader2, MessageSquare, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import { BugReportChat } from "@/components/bug-report-chat"
@@ -18,6 +18,8 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar-trigger"
 import { useToast } from "@/components/ui/use-toast"
 import RootLayout from "@/layouts/app/RootLayouts"
+import { formatTicketCompletedAt, formatTicketLocalDateTime } from "@/lib/ticket-timing"
+import type { SharedData } from "@/types"
 
 
 interface ChatMessage {
@@ -55,6 +57,8 @@ interface BugTicket {
     name: string
   } | null
   created_at: string
+  updated_at?: string | null
+  resolved_at?: string | null
   messages?: ChatMessage[]
 }
 
@@ -67,8 +71,7 @@ export default function LaporanBugPage() {
 }
 
 function LaporanBugContent() {
-  const page = usePage()
-  const { auth } = page.props as any
+  const { auth } = usePage<SharedData>().props
   const { toast } = useToast()
   const [tickets, setTickets] = useState<BugTicket[]>([])
   const [loading, setLoading] = useState(false)
@@ -91,7 +94,7 @@ function LaporanBugContent() {
 
       const data = await response.json()
       setTickets(data)
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Gagal mengambil data ticket",
@@ -149,7 +152,7 @@ function LaporanBugContent() {
       case "in_progress":
         return "Sedang Diproses"
       case "resolved":
-        return "Terselesaikan"
+        return "Menunggu Verifikasi"
       case "closed":
         return "Ditutup"
       default:
@@ -359,7 +362,7 @@ function LaporanBugContent() {
                 size="sm"
                 className="text-xs md:text-sm"
               >
-                Terselesaikan
+                Menunggu Verifikasi
               </Button>
               <Button
                 variant={filterStatus === "closed" ? "default" : "outline"}
@@ -483,16 +486,13 @@ function LaporanBugContent() {
                       <div className="flex flex-wrap gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
                         <span>{getCategoryLabel(ticket.category)}</span>
                         <span className="hidden md:inline">•</span>
-                        <span>
-                          {new Date(ticket.created_at).toLocaleDateString(
-                            "id-ID",
-                            {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            }
-                          )}
-                        </span>
+                        <span>Masuk: {formatTicketLocalDateTime(ticket.created_at)}</span>
+                        {(ticket.status === "resolved" || ticket.status === "closed") && (
+                          <>
+                            <span className="hidden md:inline">â€¢</span>
+                            <span>Selesai: {formatTicketCompletedAt(ticket)}</span>
+                          </>
+                        )}
                         <span className="hidden md:inline">•</span>
                         <span>{ticket.messages?.length ?? 0} pesan</span>
                       </div>

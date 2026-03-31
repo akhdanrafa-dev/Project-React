@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('bug_tickets', function (Blueprint $table) {
-            $table->enum('difficulty_level', ['easy', 'medium', 'hard'])->default('medium')->after('priority');
+            $table->enum('difficulty_level', ['easy', 'medium', 'hard'])->nullable()->after('priority');
             $table->timestamp('taken_at')->nullable()->after('assigned_to');
             $table->timestamp('resolved_at')->nullable()->after('taken_at');
         });

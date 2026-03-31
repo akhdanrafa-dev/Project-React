@@ -21,6 +21,11 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
 import RootLayout from '@/layouts/app/RootLayouts';
+import {
+    formatTicketCompletedAt,
+    formatTicketLocalDateTime,
+    getTicketCompletedAt,
+} from '@/lib/ticket-timing';
 
 interface BugTicket {
     id: number;
@@ -87,39 +92,6 @@ const matchesMonthYearFilter = (
     return (
         dateValue.getMonth() === month - 1 && dateValue.getFullYear() === year
     );
-};
-
-const formatDateTimeForDisplay = (value?: string | Date | null) => {
-    const parsedDate =
-        value instanceof Date
-            ? value
-            : value
-              ? new Date(value)
-              : null;
-
-    if (!parsedDate || Number.isNaN(parsedDate.getTime())) return '-';
-
-    return parsedDate.toLocaleString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-};
-
-const getTicketClosedAt = (ticket: BugTicket) => {
-    const candidates = [ticket.updated_at, ticket.resolved_at, ticket.created_at];
-
-    for (const candidate of candidates) {
-        if (!candidate) continue;
-        const parsedDate = new Date(candidate);
-        if (!Number.isNaN(parsedDate.getTime())) {
-            return parsedDate;
-        }
-    }
-
-    return null;
 };
 
 const getTicketAdminNames = (ticket: BugTicket) => {
@@ -202,7 +174,7 @@ export default function DeveloperClosedReportHistoryPage() {
         const years = new Set<string>([String(new Date().getFullYear())]);
 
         closedTickets.forEach((ticket) => {
-            const closedAt = getTicketClosedAt(ticket);
+            const closedAt = getTicketCompletedAt(ticket);
             if (closedAt) {
                 years.add(String(closedAt.getFullYear()));
             }
@@ -236,7 +208,7 @@ export default function DeveloperClosedReportHistoryPage() {
     const filteredClosedTickets = useMemo(() => {
         return closedTickets
             .filter((ticket) => {
-                const closedAt = getTicketClosedAt(ticket);
+                const closedAt = getTicketCompletedAt(ticket);
                 if (!closedAt) return false;
                 return matchesMonthYearFilter(closedAt, reportMonth, reportYear);
             })
@@ -250,8 +222,8 @@ export default function DeveloperClosedReportHistoryPage() {
                 );
             })
             .sort((a, b) => {
-                const leftDate = getTicketClosedAt(a)?.getTime() ?? 0;
-                const rightDate = getTicketClosedAt(b)?.getTime() ?? 0;
+                const leftDate = getTicketCompletedAt(a)?.getTime() ?? 0;
+                const rightDate = getTicketCompletedAt(b)?.getTime() ?? 0;
                 const dateDiff = leftDate - rightDate;
                 return dateSortOrder === 'oldest_first' ? dateDiff : -dateDiff;
             });
@@ -370,14 +342,15 @@ export default function DeveloperClosedReportHistoryPage() {
                                         <TableHead>Admin</TableHead>
                                         <TableHead>Pelapor</TableHead>
                                         <TableHead>Email</TableHead>
-                                        <TableHead>Tanggal Ditutup</TableHead>
+                                        <TableHead>Waktu Masuk</TableHead>
+                                        <TableHead>Waktu Selesai</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {loading ? (
                                         <TableRow>
                                             <TableCell
-                                                colSpan={8}
+                                                colSpan={9}
                                                 className="py-8 text-center text-muted-foreground"
                                             >
                                                 <span className="inline-flex items-center gap-2">
@@ -410,16 +383,19 @@ export default function DeveloperClosedReportHistoryPage() {
                                                     {ticket.user?.email || '-'}
                                                 </TableCell>
                                                 <TableCell>
-                                                    {formatDateTimeForDisplay(
-                                                        getTicketClosedAt(ticket),
+                                                    {formatTicketLocalDateTime(
+                                                        ticket.created_at,
                                                     )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {formatTicketCompletedAt(ticket)}
                                                 </TableCell>
                                             </TableRow>
                                         ))
                                     ) : (
                                         <TableRow>
                                             <TableCell
-                                                colSpan={8}
+                                                colSpan={9}
                                                 className="py-8 text-center text-muted-foreground"
                                             >
                                                 Tidak ada history laporan ditutup

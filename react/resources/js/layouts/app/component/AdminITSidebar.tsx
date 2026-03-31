@@ -4,6 +4,7 @@ import { usePage } from "@inertiajs/react"
 import {
   Home,
   Ticket,
+  Bell,
   BarChart3,
   Users,
   Settings,
@@ -43,6 +44,11 @@ const data = {
           title: "Laporan Tiket", 
           url: "/admin-it/tickets",
           icon: Ticket,
+        },
+        {
+          title: "Notifikasi",
+          url: "/admin-it/notifications",
+          icon: Bell,
         },
         { 
           title: "Chat", 

@@ -123,7 +123,7 @@ export default function AdminITRankings() {
                       <span className="font-medium">{admin.total_handled}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Terselesaikan</span>
+                      <span className="text-muted-foreground">Menunggu Verifikasi</span>
                       <span className="font-medium text-green-600">{admin.resolved}</span>
                     </div>
                     <div className="flex justify-between">
@@ -154,7 +154,7 @@ export default function AdminITRankings() {
                     <TableHead>Nama</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead className="text-right">Total Tiket</TableHead>
-                    <TableHead className="text-right">Terselesaikan</TableHead>
+                    <TableHead className="text-right">Menunggu Verifikasi</TableHead>
                     <TableHead className="text-right">Dalam Proses</TableHead>
                     <TableHead className="text-right">Kolaborasi</TableHead>
                     <TableHead className="text-right">Rata-rata Waktu</TableHead>
@@ -258,7 +258,7 @@ export default function AdminITRankings() {
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Terselesaikan</p>
+                <p className="text-sm text-muted-foreground">Total Menunggu Verifikasi</p>
                 <p className="text-2xl font-bold">
                   {rankings.reduce((sum, admin) => sum + admin.resolved, 0)}
                 </p>

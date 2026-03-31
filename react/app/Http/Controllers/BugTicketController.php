@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\BugTicket;
 use App\Models\ChatMessage;
 use App\Models\User;
+use App\Services\AdminItNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -14,27 +16,48 @@ use Illuminate\Validation\ValidationException;
 
 class BugTicketController extends Controller
 {
+    public function __construct(
+        private readonly AdminItNotificationService $adminItNotificationService,
+    ) {
+    }
+
     public function index()
     {
+        $this->releaseExpiredPendingEstimateTickets();
         $user = Auth::user();
+
+        if ($user && $user->role === 'admin_it') {
+            $this->adminItNotificationService->syncDueSoonNotificationsForUser($user);
+        }
         
         // Developer dapat melihat semua bug tickets
         if ($user->role === 'developer') {
-            $tickets = BugTicket::with(['user', 'assignedAdmin', 'messages.user'])
-                ->oldest()
+            $tickets = BugTicket::with([
+                'user',
+                'assignedAdmin',
+                'estimateUpdatedBy',
+                'messages.user',
+            ])
+                ->latest()
                 ->get();
         } elseif ($user->role === 'admin_it') {
             // Admin IT melihat tiket yang:
-            // 1. Belum diambil (unassigned open tickets)
+            // 1. Belum diambil, masih open, dan sudah diberi tingkat kesulitan oleh developer
             // 2. Miliknya sendiri (assigned to admin)
             // 3. Dia adalah collaborator di tiket tersebut
-            $tickets = BugTicket::with(['user', 'assignedAdmin', 'messages.user'])
+            $tickets = BugTicket::with([
+                'user',
+                'assignedAdmin',
+                'estimateUpdatedBy',
+                'messages.user',
+            ])
                 ->where(function ($query) use ($user) {
                     $query
-                        // Unassigned open tickets
+                        // Unassigned open tickets that are ready for admin handling
                         ->where(function ($unassignedQuery) {
                             $unassignedQuery->whereNull('assigned_to')
-                                ->where('status', 'open');
+                                ->where('status', BugTicket::STATUS_OPEN)
+                                ->whereNotNull('difficulty_level');
                         })
                         // Or tickets assigned to this admin
                         ->orWhere('assigned_to', $user->id);
@@ -42,7 +65,7 @@ class BugTicketController extends Controller
                     // Or tickets where this admin is a collaborator
                     $this->orWhereCollaboratorContains($query, (int) $user->id);
                 })
-                ->oldest()
+                ->latest()
                 ->get();
         } else {
             // Jika user regular, hanya tampilkan miliknya sendiri
@@ -53,6 +76,7 @@ class BugTicketController extends Controller
                     },
                     'messages.user',
                     'assignedAdmin',
+                    'estimateUpdatedBy',
                 ])
                 ->latest()
                 ->get();
@@ -90,7 +114,8 @@ class BugTicketController extends Controller
                 'description' => $validated['description'],
                 'category' => $validated['category'],
                 'priority' => $validated['priority'],
-                'status' => 'open',
+                'difficulty_level' => null,
+                'status' => BugTicket::STATUS_OPEN,
             ]);
 
             return response()->json([
@@ -134,7 +159,7 @@ class BugTicketController extends Controller
                 'tickets.*.description' => 'nullable|string',
                 'tickets.*.priority' => 'nullable|in:low,medium,high',
                 'tickets.*.difficulty_level' => 'nullable|in:easy,medium,hard',
-                'tickets.*.status' => 'nullable|in:open,in_progress,resolved,closed,diproses kembali',
+                'tickets.*.status' => 'nullable|in:open,pending_estimate,in_progress,resolved,closed,diproses kembali',
                 'tickets.*.created_at' => 'required|date',
                 'tickets.*.user' => 'nullable|array',
                 'tickets.*.user.name' => 'nullable|string|max:255',
@@ -245,13 +270,13 @@ class BugTicketController extends Controller
                     );
                     $ticket->category = 'bug';
                     $ticket->priority = (string) ($ticketData['priority'] ?? 'medium');
-                    $ticket->difficulty_level = (string) ($ticketData['difficulty_level'] ?? 'medium');
-                    $ticket->status = (string) ($ticketData['status'] ?? 'open');
+                    $ticket->difficulty_level = $ticketData['difficulty_level'] ?? null;
+                    $ticket->status = (string) ($ticketData['status'] ?? BugTicket::STATUS_OPEN);
                     $ticket->assigned_to = null;
                     $ticket->taken_at = null;
                     $ticket->resolved_at = in_array(
                         $ticket->status,
-                        ['resolved', 'closed'],
+                        [BugTicket::STATUS_RESOLVED, BugTicket::STATUS_CLOSED],
                         true,
                     ) ? $createdAt : null;
                     $ticket->appeal_count = 0;
@@ -303,13 +328,19 @@ class BugTicketController extends Controller
 
     public function show(BugTicket $bugTicket)
     {
+        $bugTicket = $this->refreshPendingEstimateTicketState($bugTicket);
         $user = Auth::user();
         if ($response = $this->forbidOtherAdminTicketAccess($bugTicket, $user)) {
             return $response;
         }
 
         $this->authorize('view', $bugTicket);
-        $bugTicket->load(['messages.user', 'user', 'assignedAdmin']);
+        $bugTicket->load([
+            'messages.user',
+            'user',
+            'assignedAdmin',
+            'estimateUpdatedBy',
+        ]);
         $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
         $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
 
@@ -319,6 +350,7 @@ class BugTicketController extends Controller
     public function update(Request $request, BugTicket $bugTicket)
     {
         try {
+            $bugTicket = $this->refreshPendingEstimateTicketState($bugTicket);
             $user = Auth::user();
             if ($response = $this->forbidOtherAdminTicketAccess($bugTicket, $user)) {
                 return $response;
@@ -328,9 +360,9 @@ class BugTicketController extends Controller
             $previousStatus = $bugTicket->status;
 
             $validated = $request->validate([
-                'status' => 'sometimes|in:open,in_progress,resolved,closed,diproses kembali',
+                'status' => 'sometimes|in:open,pending_estimate,in_progress,resolved,closed,diproses kembali',
                 'priority' => 'sometimes|in:low,medium,high',
-                'difficulty_level' => 'sometimes|in:easy,medium,hard',
+                'difficulty_level' => 'sometimes|nullable|in:easy,medium,hard',
                 'assigned_to' => 'sometimes|nullable|exists:users,id',
             ]);
 
@@ -361,7 +393,11 @@ class BugTicketController extends Controller
             if (
                 array_key_exists('difficulty_level', $validated) &&
                 $user->role === 'developer' &&
-                in_array($bugTicket->status, ['in_progress', 'resolved'], true)
+                in_array($bugTicket->status, [
+                    BugTicket::STATUS_PENDING_ESTIMATE,
+                    BugTicket::STATUS_IN_PROGRESS,
+                    BugTicket::STATUS_RESOLVED,
+                ], true)
             ) {
                 return response()->json([
                     'error' => 'Invalid difficulty update',
@@ -369,21 +405,61 @@ class BugTicketController extends Controller
                 ], 422);
             }
 
+            $isAdminAttemptingToHandleTicket =
+                $user->role === 'admin_it' &&
+                (
+                    (
+                        array_key_exists('assigned_to', $validated) &&
+                        !empty($validated['assigned_to'])
+                    ) ||
+                    (
+                        array_key_exists('status', $validated) &&
+                        in_array($validated['status'], [
+                            BugTicket::STATUS_PENDING_ESTIMATE,
+                            BugTicket::STATUS_IN_PROGRESS,
+                        ], true)
+                    )
+                );
+
+            if (
+                $isAdminAttemptingToHandleTicket &&
+                !$this->ticketWillHaveDifficultyLevel($bugTicket, $validated)
+            ) {
+                return response()->json([
+                    'error' => 'Difficulty Required',
+                    'message' => 'Tiket belum dapat diproses Admin IT sebelum developer mengisi tingkat kesulitan.',
+                ], 422);
+            }
+
             if (array_key_exists('status', $validated)) {
                 $requestedStatus = $validated['status'];
                 $isTicketOwner = (int) $bugTicket->user_id === (int) $user->id;
 
-                $ownerCanCloseResolvedTicket =
-                    $requestedStatus === 'closed' &&
-                    $isTicketOwner &&
-                    $bugTicket->status === 'resolved';
-
-                if ($requestedStatus === 'closed' && $isTicketOwner && $bugTicket->status !== 'resolved') {
+                if (
+                    $requestedStatus === BugTicket::STATUS_IN_PROGRESS &&
+                    !$this->ticketWillHaveEstimate($bugTicket)
+                ) {
                     return response()->json([
-                        'error' => 'Invalid status transition',
-                        'message' => 'Tiket hanya bisa ditutup pengguna setelah statusnya Terselesaikan.',
+                        'error' => 'Estimate Required',
+                        'message' => 'Tiket harus memiliki estimasi selesai sebelum diubah ke status Sedang diproses.',
                     ], 422);
                 }
+
+                $ownerCanCloseResolvedTicket =
+                    $requestedStatus === BugTicket::STATUS_CLOSED &&
+                    $isTicketOwner &&
+                    $bugTicket->status === BugTicket::STATUS_RESOLVED;
+
+                if (
+                    $requestedStatus === BugTicket::STATUS_CLOSED &&
+                    $isTicketOwner &&
+                    $bugTicket->status !== BugTicket::STATUS_RESOLVED
+                ) {
+                        return response()->json([
+                            'error' => 'Invalid status transition',
+                            'message' => 'Tiket hanya bisa ditutup pengguna setelah statusnya Menunggu verifikasi.',
+                        ], 422);
+                    }
 
                 if (!$ownerCanCloseResolvedTicket && $user->role !== 'admin_it') {
                     return response()->json([
@@ -393,23 +469,38 @@ class BugTicketController extends Controller
                 }
             }
 
-            if (isset($validated['assigned_to']) && !$bugTicket->taken_at) {
-                $validated['taken_at'] = now();
+            if (
+                array_key_exists('assigned_to', $validated) &&
+                !empty($validated['assigned_to'])
+            ) {
+                if (!$bugTicket->taken_at) {
+                    $validated['taken_at'] = now()->utc();
+                }
+
+                if (!array_key_exists('status', $validated) && !$bugTicket->hasEstimate()) {
+                    $validated['status'] = BugTicket::STATUS_PENDING_ESTIMATE;
+                }
             }
 
             if (
                 isset($validated['status']) &&
-                in_array($validated['status'], ['resolved', 'closed']) &&
+                in_array($validated['status'], [
+                    BugTicket::STATUS_RESOLVED,
+                    BugTicket::STATUS_CLOSED,
+                ], true) &&
                 !$bugTicket->resolved_at
             ) {
-                $validated['resolved_at'] = now();
+                $validated['resolved_at'] = now()->utc();
             }
 
             $bugTicket->update($validated);
 
             if (
                 isset($validated['status']) &&
-                in_array($validated['status'], ['resolved', 'closed'], true) &&
+                in_array($validated['status'], [
+                    BugTicket::STATUS_RESOLVED,
+                    BugTicket::STATUS_CLOSED,
+                ], true) &&
                 $previousStatus !== $validated['status'] &&
                 $this->isAdminCollaboratorOnTicket($bugTicket, (int) $user->id)
             ) {
@@ -421,7 +512,12 @@ class BugTicketController extends Controller
                 ]);
             }
 
-            $bugTicket->load(['user', 'assignedAdmin', 'messages.user']);
+            $bugTicket->load([
+                'user',
+                'assignedAdmin',
+                'estimateUpdatedBy',
+                'messages.user',
+            ]);
             $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
             $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
 
@@ -748,6 +844,7 @@ class BugTicketController extends Controller
     public function take(Request $request, BugTicket $bugTicket)
     {
         try {
+            $bugTicket = $this->refreshPendingEstimateTicketState($bugTicket);
             $user = Auth::user();
 
             if ($user->role !== 'admin_it') {
@@ -763,9 +860,16 @@ class BugTicketController extends Controller
 
             $this->authorize('update', $bugTicket);
 
+            if (!$this->hasDifficultyLevel($bugTicket->difficulty_level)) {
+                return response()->json([
+                    'error' => 'Difficulty Required',
+                    'message' => 'Tiket belum dapat diambil karena developer belum mengisi tingkat kesulitan.',
+                ], 422);
+            }
+
             $validated = $request->validate([
                 'assigned_to' => 'required|exists:users,id',
-                'status' => 'sometimes|in:in_progress',
+                'status' => 'sometimes|in:pending_estimate,in_progress',
             ]);
 
             if ((int) $validated['assigned_to'] !== (int) $user->id) {
@@ -775,14 +879,15 @@ class BugTicketController extends Controller
                 ], 403);
             }
 
-            $validated['taken_at'] = now();
+            $validated['taken_at'] = now()->utc();
             if (!isset($validated['status'])) {
-                $validated['status'] = 'in_progress';
+                $validated['status'] = BugTicket::STATUS_PENDING_ESTIMATE;
             }
+            $validated['status'] = BugTicket::STATUS_PENDING_ESTIMATE;
 
             $bugTicket->update($validated);
             $bugTicket->refresh();
-            $bugTicket->load(['user', 'assignedAdmin']);
+            $bugTicket->load(['user', 'assignedAdmin', 'estimateUpdatedBy']);
             $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
             $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
 
@@ -798,6 +903,199 @@ class BugTicketController extends Controller
             return response()->json([
                 'error' => 'Unauthorized',
                 'message' => 'Anda tidak memiliki izin untuk mengubah tiket ini',
+            ], 403);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Server Error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function updateEstimate(Request $request, BugTicket $bugTicket)
+    {
+        try {
+            $bugTicket = $this->refreshPendingEstimateTicketState($bugTicket);
+            $user = Auth::user();
+            if ($response = $this->forbidOtherAdminTicketAccess($bugTicket, $user)) {
+                return $response;
+            }
+
+            $this->authorize('update', $bugTicket);
+
+            if (!$user || !in_array($user->role, ['admin_it', 'developer'], true)) {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Hanya Admin IT yang dapat mengubah estimasi dan developer hanya dapat mengirim saran estimasi.',
+                ], 403);
+            }
+
+            if ((int) $bugTicket->assigned_to <= 0) {
+                return response()->json([
+                    'error' => 'Invalid estimate state',
+                    'message' => 'Estimasi hanya dapat diatur setelah tiket diambil Admin IT.',
+                ], 422);
+            }
+
+            if (in_array($bugTicket->status, [
+                BugTicket::STATUS_RESOLVED,
+                BugTicket::STATUS_CLOSED,
+            ], true)) {
+                return response()->json([
+                    'error' => 'Invalid estimate state',
+                    'message' => 'Estimasi tidak dapat diubah pada tiket yang sudah selesai atau ditutup.',
+                ], 422);
+            }
+
+            if (
+                $user->role === 'admin_it' &&
+                (int) $bugTicket->assigned_to !== (int) $user->id
+            ) {
+                return response()->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Hanya Admin IT pemilik tiket yang dapat mengubah estimasi.',
+                ], 403);
+            }
+
+            if ($user->role === 'developer') {
+                $validated = $request->validate([
+                    'estimated_completion_at' => 'required|date',
+                    'reason' => 'required|string|min:10|max:1000',
+                ]);
+
+                $suggestedEstimate = Carbon::parse($validated['estimated_completion_at'])->utc();
+                if ($suggestedEstimate->lessThanOrEqualTo(now()->utc())) {
+                    return response()->json([
+                        'error' => 'Validation Error',
+                        'message' => 'Estimasi harus lebih besar dari waktu saat ini.',
+                        'errors' => [
+                            'estimated_completion_at' => [
+                                'Estimasi harus lebih besar dari waktu saat ini.',
+                            ],
+                        ],
+                    ], 422);
+                }
+
+                $reason = trim((string) $validated['reason']);
+
+                ChatMessage::create([
+                    'ticket_id' => $bugTicket->id,
+                    'user_id' => $user->id,
+                    'message' => $this->buildEstimateSuggestionMessage(
+                        $user,
+                        $bugTicket,
+                        $suggestedEstimate,
+                        $reason,
+                    ),
+                    'is_read' => false,
+                ]);
+
+                $bugTicket->load([
+                    'user',
+                    'assignedAdmin',
+                    'estimateUpdatedBy',
+                    'messages.user',
+                ]);
+                $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
+                $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
+
+                return response()->json([
+                    'message' => 'Saran estimasi berhasil dikirim ke Admin IT.',
+                    'ticket' => $bugTicket,
+                ]);
+            }
+
+            $validated = $request->validate([
+                'estimated_completion_at' => 'required|date',
+                'reason' => 'nullable|string|min:10|max:1000',
+            ]);
+
+            $newEstimate = Carbon::parse($validated['estimated_completion_at'])->utc();
+            if ($newEstimate->lessThanOrEqualTo(now()->utc())) {
+                return response()->json([
+                    'error' => 'Validation Error',
+                    'message' => 'Estimasi harus lebih besar dari waktu saat ini.',
+                    'errors' => [
+                        'estimated_completion_at' => [
+                            'Estimasi harus lebih besar dari waktu saat ini.',
+                        ],
+                    ],
+                ], 422);
+            }
+
+            $previousEstimate = $bugTicket->estimated_completion_at
+                ? Carbon::parse($bugTicket->estimated_completion_at)->utc()
+                : null;
+            $estimateChanged = !$previousEstimate || !$previousEstimate->equalTo($newEstimate);
+            $reason = trim((string) ($validated['reason'] ?? ''));
+
+            if (!$estimateChanged) {
+                $bugTicket->load([
+                    'user',
+                    'assignedAdmin',
+                    'estimateUpdatedBy',
+                    'messages.user',
+                ]);
+                $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
+                $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
+
+                return response()->json([
+                    'message' => 'Estimasi tidak berubah.',
+                    'ticket' => $bugTicket,
+                ]);
+            }
+
+            $bugTicket->update([
+                'estimated_completion_at' => $newEstimate,
+                'estimate_updated_by' => $user->id,
+                'estimate_updated_at' => now()->utc(),
+                'estimate_change_reason' => $reason !== '' ? $reason : null,
+                'status' => in_array($bugTicket->status, [
+                    BugTicket::STATUS_OPEN,
+                    BugTicket::STATUS_PENDING_ESTIMATE,
+                ], true)
+                    ? BugTicket::STATUS_IN_PROGRESS
+                    : $bugTicket->status,
+            ]);
+
+            ChatMessage::create([
+                'ticket_id' => $bugTicket->id,
+                'user_id' => $user->id,
+                'message' => $this->buildEstimateUpdateMessage(
+                    $user,
+                    $previousEstimate,
+                    $newEstimate,
+                    $reason,
+                ),
+                'is_read' => false,
+            ]);
+
+            $this->adminItNotificationService->markTicketNotificationsAsRead($bugTicket);
+
+            $bugTicket->refresh();
+            $bugTicket->load([
+                'user',
+                'assignedAdmin',
+                'estimateUpdatedBy',
+                'messages.user',
+            ]);
+            $bugTicket = $this->sanitizeTakeHistoryForViewer($bugTicket, $user);
+            $bugTicket = $this->appendCollaboratorsDetailsForTicket($bugTicket);
+
+            return response()->json([
+                'message' => 'Estimasi berhasil diperbarui.',
+                'ticket' => $bugTicket,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Error',
+                'message' => 'Data tidak valid',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json([
+                'error' => 'Unauthorized',
+                'message' => 'Anda tidak memiliki izin untuk mengubah estimasi tiket ini.',
             ], 403);
         } catch (\Exception $e) {
             return response()->json([
@@ -848,7 +1146,12 @@ class BugTicketController extends Controller
                 'message' => 'Aju banding berhasil diajukan',
                 'appeal_count' => $bugTicket->appeal_count,
                 'ticket' => $this->sanitizeTakeHistoryForViewer(
-                    $bugTicket->load(['user', 'messages.user']),
+                    $bugTicket->load([
+                        'user',
+                        'messages.user',
+                        'assignedAdmin',
+                        'estimateUpdatedBy',
+                    ]),
                     Auth::user()
                 ),
             ]);
@@ -1020,7 +1323,7 @@ class BugTicketController extends Controller
             $bugTicket->save();
 
             $bugTicket->refresh();
-            $bugTicket->load(['user', 'assignedAdmin']);
+            $bugTicket->load(['user', 'assignedAdmin', 'estimateUpdatedBy']);
 
             return response()->json([
                 'success' => true,
@@ -1080,7 +1383,7 @@ class BugTicketController extends Controller
             $bugTicket->save();
 
             $bugTicket->refresh();
-            $bugTicket->load(['user', 'assignedAdmin']);
+            $bugTicket->load(['user', 'assignedAdmin', 'estimateUpdatedBy']);
 
             return response()->json([
                 'success' => true,
@@ -1135,8 +1438,7 @@ class BugTicketController extends Controller
     private function whereCollaboratorContains($query, int $adminId)
     {
         return $query->where(function ($collaboratorQuery) use ($adminId) {
-            $collaboratorQuery->whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
-                ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode((string) $adminId)]);
+            $this->applyCollaboratorContainsConstraint($collaboratorQuery, $adminId);
         });
     }
 
@@ -1197,12 +1499,73 @@ class BugTicketController extends Controller
         return $ticket;
     }
 
+    private function buildEstimateUpdateMessage(
+        User $actor,
+        ?Carbon $previousEstimate,
+        Carbon $newEstimate,
+        string $reason = ''
+    ): string {
+        $actorLabel = $actor->role === 'developer'
+            ? "developer {$actor->name}"
+            : "Admin IT {$actor->name}";
+
+        $formattedNewEstimate = $this->formatEstimateForMessage($newEstimate);
+        $formattedPreviousEstimate = $previousEstimate
+            ? $this->formatEstimateForMessage($previousEstimate)
+            : null;
+
+        if ($formattedPreviousEstimate) {
+            $message = "Estimasi selesai diperbarui oleh {$actorLabel} dari {$formattedPreviousEstimate} menjadi {$formattedNewEstimate}.";
+        } else {
+            $message = "Estimasi selesai telah diatur oleh {$actorLabel}: {$formattedNewEstimate}.";
+        }
+
+        if ($reason !== '') {
+            $message .= ' Alasan perubahan: ' . Str::squish($reason);
+        }
+
+        return $message;
+    }
+
+    private function buildEstimateSuggestionMessage(
+        User $actor,
+        BugTicket $ticket,
+        Carbon $suggestedEstimate,
+        string $reason
+    ): string {
+        $actorLabel = "developer {$actor->name}";
+        $currentEstimate = $ticket->estimated_completion_at
+            ? Carbon::parse($ticket->estimated_completion_at)->utc()
+            : null;
+        $formattedSuggestedEstimate = $this->formatEstimateForMessage($suggestedEstimate);
+
+        if ($currentEstimate) {
+            return "Saran estimasi selesai dari {$actorLabel}. Estimasi saat ini: {$this->formatEstimateForMessage($currentEstimate)}. Saran baru: {$formattedSuggestedEstimate}. Alasan: " . Str::squish($reason);
+        }
+
+        return "Saran estimasi selesai dari {$actorLabel}. Admin IT belum menetapkan estimasi selesai untuk tiket ini. Saran baru: {$formattedSuggestedEstimate}. Alasan: " . Str::squish($reason);
+    }
+
+    private function formatEstimateForMessage(Carbon $estimate): string
+    {
+        return $estimate
+            ->copy()
+            ->timezone('Asia/Jakarta')
+            ->locale('id')
+            ->translatedFormat('d M Y H:i') . ' WIB';
+    }
+
     private function orWhereCollaboratorContains($query, int $adminId)
     {
         return $query->orWhere(function ($collaboratorQuery) use ($adminId) {
-            $collaboratorQuery->whereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode($adminId)])
-                ->orWhereRaw('JSON_CONTAINS(collaborators, ?)', [json_encode((string) $adminId)]);
+            $this->applyCollaboratorContainsConstraint($collaboratorQuery, $adminId);
         });
+    }
+
+    private function applyCollaboratorContainsConstraint($query, int $adminId): void
+    {
+        $query->whereJsonContains('collaborators', $adminId)
+            ->orWhereJsonContains('collaborators', (string) $adminId);
     }
 
     private function isAdminCollaboratorOnTicket(BugTicket $ticket, int $userId): bool
@@ -1281,13 +1644,88 @@ class BugTicketController extends Controller
             }
         }
 
-        if (!$ticket->assigned_to && $ticket->status !== 'open') {
+        if (
+            !$ticket->assigned_to &&
+            $ticket->status !== BugTicket::STATUS_OPEN
+        ) {
             return response()->json([
                 'error' => 'Forbidden',
                 'message' => 'Tiket tanpa admin handler tidak dapat diakses pada status ini.',
             ], 403);
         }
 
+        if (
+            !$ticket->assigned_to &&
+            $ticket->status === BugTicket::STATUS_OPEN &&
+            !$this->hasDifficultyLevel($ticket->difficulty_level)
+        ) {
+            return response()->json([
+                'error' => 'Forbidden',
+                'message' => 'Tiket ini belum terlihat untuk Admin IT karena developer belum mengisi tingkat kesulitan.',
+            ], 403);
+        }
+
         return null;
+    }
+
+    private function hasDifficultyLevel($difficultyLevel): bool
+    {
+        return is_string($difficultyLevel) && trim($difficultyLevel) !== '';
+    }
+
+    private function ticketWillHaveDifficultyLevel(BugTicket $ticket, array $validated): bool
+    {
+        if (array_key_exists('difficulty_level', $validated)) {
+            return $this->hasDifficultyLevel($validated['difficulty_level']);
+        }
+
+        return $this->hasDifficultyLevel($ticket->difficulty_level);
+    }
+
+    private function ticketWillHaveEstimate(BugTicket $ticket): bool
+    {
+        return $ticket->hasEstimate();
+    }
+
+    private function refreshPendingEstimateTicketState(BugTicket $ticket): BugTicket
+    {
+        if ($ticket->shouldReleasePendingEstimate(now()->utc())) {
+            $this->releasePendingEstimateTicket($ticket);
+            $ticket->refresh();
+        }
+
+        return $ticket;
+    }
+
+    private function releaseExpiredPendingEstimateTickets(): void
+    {
+        BugTicket::query()
+            ->where('status', BugTicket::STATUS_PENDING_ESTIMATE)
+            ->whereNotNull('assigned_to')
+            ->whereNull('estimated_completion_at')
+            ->whereNotNull('taken_at')
+            ->get()
+            ->filter(fn (BugTicket $ticket) => $ticket->shouldReleasePendingEstimate(now()->utc()))
+            ->each(function (BugTicket $ticket) {
+                $this->releasePendingEstimateTicket($ticket);
+            });
+    }
+
+    private function releasePendingEstimateTicket(BugTicket $ticket): void
+    {
+        $assignedAdminId = (int) $ticket->assigned_to;
+
+        $ticket->update([
+            'status' => BugTicket::STATUS_OPEN,
+            'assigned_to' => null,
+            'taken_at' => null,
+            'collaboration_type' => 'solo',
+            'collaborators' => null,
+        ]);
+
+        $this->adminItNotificationService->markTicketNotificationsAsRead(
+            $ticket,
+            $assignedAdminId,
+        );
     }
 }

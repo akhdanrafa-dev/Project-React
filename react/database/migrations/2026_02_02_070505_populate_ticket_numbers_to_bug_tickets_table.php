@@ -1,9 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-use App\Models\BugTicket;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -12,21 +10,30 @@ return new class extends Migration
      */
     public function up(): void
     {
-        $tickets = BugTicket::whereNull('ticket_number')->orderBy('created_at')->get();
-        
+        $tickets = DB::table('bug_tickets')
+            ->whereNull('ticket_number')
+            ->orderBy('created_at')
+            ->get();
+
         foreach ($tickets as $ticket) {
-            $year = $ticket->created_at->format('Y');
-            $month = $ticket->created_at->format('m');
-            
-            $latestTicket = BugTicket::whereYear('created_at', $year)
+            $createdAt = \Carbon\Carbon::parse($ticket->created_at);
+            $year = $createdAt->format('Y');
+            $month = $createdAt->format('m');
+
+            $latestTicket = DB::table('bug_tickets')
+                ->whereYear('created_at', $year)
                 ->whereMonth('created_at', $month)
                 ->whereNotNull('ticket_number')
-                ->latest('id')
+                ->orderByDesc('id')
                 ->first();
-            
+
             $sequence = ($latestTicket ? (int) substr($latestTicket->ticket_number, -4) : 0) + 1;
-            $ticket->ticket_number = 'TKT-' . $year . $month . '-' . str_pad($sequence, 4, '0', STR_PAD_LEFT);
-            $ticket->save();
+
+            DB::table('bug_tickets')
+                ->where('id', $ticket->id)
+                ->update([
+                    'ticket_number' => 'TKT-' . $year . $month . '-' . str_pad($sequence, 4, '0', STR_PAD_LEFT),
+                ]);
         }
     }
 

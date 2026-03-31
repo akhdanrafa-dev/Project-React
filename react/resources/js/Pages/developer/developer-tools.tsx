@@ -1,6 +1,7 @@
 import { ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { TicketEstimateDialog } from '@/components/ticket-estimate-dialog';
 import { Badge } from '@/components/ui/badge';
 import {
     Breadcrumb,
@@ -29,6 +30,16 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
 import RootLayout from '@/layouts/app/RootLayouts';
+import {
+    formatTicketEstimate,
+    TicketEstimateData,
+} from '@/lib/ticket-estimate';
+import {
+    getTicketStatusLabel,
+    normalizeTicketStatus,
+    TICKET_STATUS,
+} from '@/lib/ticket-status';
+import { formatTicketLocalDateTime } from '@/lib/ticket-timing';
 
 type AdminBrief = {
     id: number;
@@ -51,9 +62,16 @@ interface BugTicket {
     user_id: number;
     assigned_to?: number | null;
     created_at: string;
+    updated_at?: string | null;
+    resolved_at?: string | null;
     collaboration_type?: string | null;
     collaborators?: Array<number | string> | null;
     collaborators_details?: CollaboratorDetail[] | null;
+    estimated_completion_at?: string | null;
+    estimate_updated_at?: string | null;
+    estimate_change_reason?: string | null;
+    estimateUpdatedBy?: AdminBrief | null;
+    estimate_updated_by_user?: AdminBrief | null;
     user?: {
         id: number;
         name: string;
@@ -68,7 +86,12 @@ type ApiBugTicket = BugTicket & {
     assigned_admin?: BugTicket['assignedAdmin'];
 };
 
-type StatusFilter = 'all' | 'open' | 'in_progress' | 'resolved';
+type StatusFilter =
+    | 'all'
+    | 'open'
+    | 'pending_estimate'
+    | 'in_progress'
+    | 'resolved';
 
 const DIFFICULTY_OPTIONS = [
     { value: 'easy', label: 'Mudah' },
@@ -80,8 +103,6 @@ const normalizeTicket = (ticket: ApiBugTicket): BugTicket => ({
     ...ticket,
     assignedAdmin: ticket.assignedAdmin ?? ticket.assigned_admin ?? null,
 });
-
-const normalizeStatus = (status?: string) => status?.toLowerCase() ?? '';
 
 const parseDateInput = (value: string, endOfDay = false) => {
     const [year, month, day] = value.split('-').map(Number);
@@ -131,10 +152,19 @@ const formatDateInputForDisplay = (value: string) => {
 };
 
 const isDifficultyLocked = (status: string) =>
-    ['in_progress', 'resolved'].includes(normalizeStatus(status));
+    [
+        TICKET_STATUS.PENDING_ESTIMATE,
+        TICKET_STATUS.IN_PROGRESS,
+        TICKET_STATUS.RESOLVED,
+    ].includes(
+        normalizeTicketStatus(status) as
+            | 'pending_estimate'
+            | 'in_progress'
+            | 'resolved',
+    );
 
 const isCollabTicket = (ticket: BugTicket) =>
-    normalizeStatus(ticket.collaboration_type ?? '') === 'collab';
+    normalizeTicketStatus(ticket.collaboration_type ?? '') === 'collab';
 
 export default function DeveloperToolsPage() {
     return (
@@ -161,6 +191,8 @@ function DeveloperToolsContent() {
     >({});
     const [loadingCollaboratorsTicketId, setLoadingCollaboratorsTicketId] =
         useState<number | null>(null);
+    const [estimateDialogTicket, setEstimateDialogTicket] =
+        useState<BugTicket | null>(null);
 
     const fetchTickets = async () => {
         try {
@@ -233,17 +265,23 @@ function DeveloperToolsContent() {
     };
 
     const getStatusBadge = (status: string) => {
-        switch (status?.toLowerCase()) {
-            case 'open':
+        switch (normalizeTicketStatus(status)) {
+            case TICKET_STATUS.OPEN:
                 return <Badge variant="outline">Terbuka</Badge>;
-            case 'in_progress':
-                return <Badge className="bg-blue-500">Dalam Proses</Badge>;
-            case 'resolved':
-                return <Badge className="bg-green-500">Terselesaikan</Badge>;
-            case 'closed':
+            case TICKET_STATUS.PENDING_ESTIMATE:
+                return (
+                    <Badge className="bg-amber-500">
+                        Menunggu Estimasi Pengerjaan
+                    </Badge>
+                );
+            case TICKET_STATUS.IN_PROGRESS:
+                return <Badge className="bg-blue-500">Sedang Diproses</Badge>;
+            case TICKET_STATUS.RESOLVED:
+                return <Badge className="bg-green-500">Menunggu Verifikasi</Badge>;
+            case TICKET_STATUS.CLOSED:
                 return <Badge className="bg-gray-500">Ditutup</Badge>;
             default:
-                return <Badge>{status}</Badge>;
+                return <Badge>{getTicketStatusLabel(status)}</Badge>;
         }
     };
 
@@ -313,7 +351,10 @@ function DeveloperToolsContent() {
 
             toast({
                 title: 'Sukses',
-                description: 'Tingkat kesulitan berhasil diubah',
+                description:
+                    !selectedTicket?.difficulty_level && difficulty
+                        ? 'Tingkat kesulitan berhasil diisi. Tiket sekarang terlihat oleh Admin IT.'
+                        : 'Tingkat kesulitan berhasil diubah',
             });
         } catch (error) {
             const errorMessage =
@@ -410,7 +451,10 @@ function DeveloperToolsContent() {
 
     const activeTickets = useMemo(
         () =>
-            tickets.filter((ticket) => normalizeStatus(ticket.status) !== 'closed'),
+            tickets.filter(
+                (ticket) =>
+                    normalizeTicketStatus(ticket.status) !== TICKET_STATUS.CLOSED,
+            ),
         [tickets],
     );
 
@@ -447,18 +491,25 @@ function DeveloperToolsContent() {
             ),
         );
         const open = rangeFilteredTickets.filter(
-            (ticket) => normalizeStatus(ticket.status) === 'open',
+            (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.OPEN,
+        ).length;
+        const pendingEstimate = rangeFilteredTickets.filter(
+            (ticket) =>
+                normalizeTicketStatus(ticket.status) ===
+                TICKET_STATUS.PENDING_ESTIMATE,
         ).length;
         const inProgress = rangeFilteredTickets.filter(
-            (ticket) => normalizeStatus(ticket.status) === 'in_progress',
+            (ticket) =>
+                normalizeTicketStatus(ticket.status) === TICKET_STATUS.IN_PROGRESS,
         ).length;
         const resolved = rangeFilteredTickets.filter(
-            (ticket) => normalizeStatus(ticket.status) === 'resolved',
+            (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.RESOLVED,
         ).length;
 
         return {
             all: rangeFilteredTickets.length,
             open,
+            pending_estimate: pendingEstimate,
             in_progress: inProgress,
             resolved,
         };
@@ -477,7 +528,7 @@ function DeveloperToolsContent() {
                 .filter((ticket) =>
                     statusFilter === 'all'
                         ? true
-                        : normalizeStatus(ticket.status) === statusFilter,
+                        : normalizeTicketStatus(ticket.status) === statusFilter,
                 )
                 .filter(
                     (ticket) =>
@@ -492,14 +543,16 @@ function DeveloperToolsContent() {
                             .includes(searchQuery.toLowerCase()),
                 )
                 .sort((a, b) => {
+                    const createdAtDiff =
+                        new Date(b.created_at).getTime() -
+                        new Date(a.created_at).getTime();
+                    if (createdAtDiff !== 0) return createdAtDiff;
+
                     const priorityDiff =
                         getPriorityValue(b.priority) -
                         getPriorityValue(a.priority);
                     if (priorityDiff !== 0) return priorityDiff;
-                    return (
-                        new Date(a.created_at).getTime() -
-                        new Date(b.created_at).getTime()
-                    );
+                    return 0;
                 }),
         [activeTickets, reportEndDate, reportStartDate, searchQuery, statusFilter],
     );
@@ -607,11 +660,15 @@ function DeveloperToolsContent() {
                                     <option value="open">
                                         Laporan masuk ({statusCounts.open})
                                     </option>
+                                    <option value="pending_estimate">
+                                        Menunggu estimasi pengerjaan (
+                                        {statusCounts.pending_estimate})
+                                    </option>
                                     <option value="in_progress">
                                         Sedang diproses ({statusCounts.in_progress})
                                     </option>
                                     <option value="resolved">
-                                        Terselesaikan ({statusCounts.resolved})
+                                        Menunggu verifikasi ({statusCounts.resolved})
                                     </option>
                                 </select>
                             </div>
@@ -640,12 +697,16 @@ function DeveloperToolsContent() {
                                             </TableHead>
                                             <TableHead>Username</TableHead>
                                             <TableHead>Email</TableHead>
-                                            <TableHead>Tanggal</TableHead>
+                                            <TableHead>Waktu Masuk</TableHead>
                                             <TableHead>Nomor Tiket</TableHead>
                                             <TableHead>Prioritas</TableHead>
                                             <TableHead>Kesulitan</TableHead>
                                             <TableHead>Status</TableHead>
+                                            <TableHead>Estimasi</TableHead>
                                             <TableHead>Handle By</TableHead>
+                                            <TableHead className="w-28">
+                                                Aksi
+                                            </TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -675,10 +736,8 @@ function DeveloperToolsContent() {
                                                                 'N/A'}
                                                         </TableCell>
                                                         <TableCell>
-                                                            {new Date(
+                                                            {formatTicketLocalDateTime(
                                                                 ticket.created_at,
-                                                            ).toLocaleDateString(
-                                                                'id-ID',
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="font-mono text-sm">
@@ -724,7 +783,7 @@ function DeveloperToolsContent() {
                                                                     aria-label="Ubah tingkat kesulitan"
                                                                 >
                                                                     <option value="">
-                                                                        -
+                                                                        Belum di tentukan
                                                                     </option>
                                                                     {DIFFICULTY_OPTIONS.map(
                                                                         (
@@ -751,6 +810,27 @@ function DeveloperToolsContent() {
                                                             {getStatusBadge(
                                                                 ticket.status,
                                                             )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="space-y-2">
+                                                                <p className="text-sm font-medium">
+                                                                    {formatTicketEstimate(
+                                                                        ticket.estimated_completion_at,
+                                                                    )}
+                                                                </p>
+                                                                {ticket
+                                                                    .estimateUpdatedBy
+                                                                    ?.name ? (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        Oleh{' '}
+                                                                        {
+                                                                            ticket
+                                                                                .estimateUpdatedBy
+                                                                                .name
+                                                                        }
+                                                                    </p>
+                                                                ) : null}
+                                                            </div>
                                                         </TableCell>
                                                         <TableCell>
                                                             {isCollabTicket(
@@ -864,13 +944,26 @@ function DeveloperToolsContent() {
                                                                 </Badge>
                                                             )}
                                                         </TableCell>
+                                                        <TableCell>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() =>
+                                                                    setEstimateDialogTicket(
+                                                                        ticket,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Estimasi
+                                                            </Button>
+                                                        </TableCell>
                                                     </TableRow>
                                                 );
                                             })
                                         ) : (
                                             <TableRow>
                                                 <TableCell
-                                                    colSpan={9}
+                                                    colSpan={11}
                                                     className="py-8 text-center"
                                                 >
                                                     Tidak ada data bug ticket
@@ -889,6 +982,30 @@ function DeveloperToolsContent() {
                     </CardContent>
                 </Card>
             </div>
+            <TicketEstimateDialog
+                open={Boolean(estimateDialogTicket)}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setEstimateDialogTicket(null);
+                    }
+                }}
+                ticket={estimateDialogTicket as TicketEstimateData}
+                currentUserRole="developer"
+                onUpdated={(updatedTicket) => {
+                    const typedTicket = updatedTicket as BugTicket;
+
+                    setTickets((prevTickets) =>
+                        prevTickets.map((ticket) =>
+                            ticket.id === typedTicket.id
+                                ? normalizeTicket(typedTicket as ApiBugTicket)
+                                : ticket,
+                        ),
+                    );
+                    setEstimateDialogTicket(
+                        normalizeTicket(typedTicket as ApiBugTicket),
+                    );
+                }}
+            />
         </>
     );
 }

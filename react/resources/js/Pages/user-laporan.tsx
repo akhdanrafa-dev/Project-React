@@ -2,6 +2,7 @@ import { usePage } from "@inertiajs/react"
 import { Loader2, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
 
+import { TicketEstimateDialog } from "@/components/ticket-estimate-dialog"
 import { TicketResolutionModal } from "@/components/ticket-resolution-modal"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -26,6 +27,13 @@ import {
 } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import RootLayout from "@/layouts/app/RootLayouts"
+import { formatTicketEstimate, TicketEstimateData } from "@/lib/ticket-estimate"
+import {
+  getTicketStatusLabel,
+  normalizeTicketStatus,
+  TICKET_STATUS,
+} from "@/lib/ticket-status"
+import { formatTicketCompletedAt, formatTicketLocalDateTime } from "@/lib/ticket-timing"
 import type { SharedData } from "@/types"
 
 interface BugTicket {
@@ -38,6 +46,8 @@ interface BugTicket {
   user_id: number
   assigned_to?: number | null
   created_at: string
+  updated_at?: string | null
+  resolved_at?: string | null
   appeal_count?: number
   user?: {
     id: number
@@ -50,6 +60,17 @@ interface BugTicket {
     name: string
   } | null
   assigned_admin?: {
+    id: number
+    name: string
+  } | null
+  estimated_completion_at?: string | null
+  estimate_updated_at?: string | null
+  estimate_change_reason?: string | null
+  estimateUpdatedBy?: {
+    id: number
+    name: string
+  } | null
+  estimate_updated_by_user?: {
     id: number
     name: string
   } | null
@@ -75,6 +96,7 @@ function UserLaporanContent() {
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedResolutionTicket, setSelectedResolutionTicket] = useState<BugTicket | null>(null)
+  const [selectedEstimateTicket, setSelectedEstimateTicket] = useState<BugTicket | null>(null)
   const [resolutionModalOpen, setResolutionModalOpen] = useState(false)
   const [deletingTicketId, setDeletingTicketId] = useState<number | null>(null)
   const [deletingAllClosed, setDeletingAllClosed] = useState(false)
@@ -166,22 +188,18 @@ function UserLaporanContent() {
   }
 
   const getStatusBadge = (status: string) => {
-    const baseStatus = status.split(" ")[0].toLowerCase()
-    
-    switch (baseStatus) {
-      case "open":
+    switch (normalizeTicketStatus(status)) {
+      case TICKET_STATUS.OPEN:
         return <Badge variant="outline">Terbuka</Badge>
-      case "in_progress":
-        return <Badge className="bg-blue-500">Dalam Proses</Badge>
-      case "resolved":
-        return status.includes(" ") ? (
-          <Badge className="bg-green-500">{status}</Badge>
-        ) : (
-          <Badge className="bg-green-500">Selesai</Badge>
-        )
-      case "diproses":
+      case TICKET_STATUS.PENDING_ESTIMATE:
+        return <Badge className="bg-amber-500">Menunggu Estimasi Pengerjaan</Badge>
+      case TICKET_STATUS.IN_PROGRESS:
+        return <Badge className="bg-blue-500">Sedang Diproses</Badge>
+      case TICKET_STATUS.RESOLVED:
+        return <Badge className="bg-green-500">{getTicketStatusLabel(status)}</Badge>
+      case TICKET_STATUS.REOPENED:
         return <Badge className="bg-orange-500">Diproses Kembali</Badge>
-      case "closed":
+      case TICKET_STATUS.CLOSED:
         return <Badge className="bg-gray-500">Ditutup</Badge>
       default:
         return <Badge>{status}</Badge>
@@ -197,7 +215,7 @@ function UserLaporanContent() {
       case "hard":
         return <Badge className="bg-red-100 text-red-800">Susah</Badge>
       default:
-        return <Badge className="bg-gray-100 text-gray-800">-</Badge>
+        return <Badge className="bg-gray-100 text-gray-800">Belum di tentukan</Badge>
     }
   }
 
@@ -217,8 +235,15 @@ function UserLaporanContent() {
       return <span className="text-sm">{assignedAdminName}</span>
     }
 
-    if (ticket.status?.toLowerCase() === "open") {
+    if (normalizeTicketStatus(ticket.status) === TICKET_STATUS.OPEN) {
       return <Badge variant="secondary">Belum di handle</Badge>
+    }
+
+    if (
+      normalizeTicketStatus(ticket.status) === TICKET_STATUS.PENDING_ESTIMATE &&
+      ticket.assigned_to
+    ) {
+      return <Badge variant="outline">Sudah diambil Admin IT</Badge>
     }
 
     if (ticket.assigned_to) {
@@ -376,16 +401,20 @@ function UserLaporanContent() {
     })
 
   const openTickets = filteredTickets.filter((t) => {
-    const status = t.status?.toLowerCase() || ""
-    return status !== "resolved" && status !== "closed" && status !== "diproses kembali"
+    const status = normalizeTicketStatus(t.status)
+    return (
+      status !== TICKET_STATUS.RESOLVED &&
+      status !== TICKET_STATUS.CLOSED &&
+      status !== TICKET_STATUS.REOPENED
+    )
   })
   const resolvedTickets = filteredTickets.filter((t) => {
-    const status = t.status?.toLowerCase() || ""
-    return status === "resolved" || status === "diproses kembali"
+    const status = normalizeTicketStatus(t.status)
+    return status === TICKET_STATUS.RESOLVED || status === TICKET_STATUS.REOPENED
   })
   const closedTickets = filteredTickets.filter((t) => {
-    const status = t.status?.toLowerCase() || ""
-    return status === "closed"
+    const status = normalizeTicketStatus(t.status)
+    return status === TICKET_STATUS.CLOSED
   })
 
   return (
@@ -437,7 +466,7 @@ function UserLaporanContent() {
               {openTickets.length > 0 && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold">Tiket Terbuka</h3>
+                    <h3 className="text-lg font-semibold">Tiket Aktif</h3>
                     <Badge variant="outline">{openTickets.length}</Badge>
                   </div>
                   <div className="rounded-lg border overflow-x-auto">
@@ -446,11 +475,12 @@ function UserLaporanContent() {
                         <TableRow>
                           <TableHead className="w-12">ID</TableHead>
                           <TableHead>Judul</TableHead>
-                          <TableHead>Tanggal</TableHead>
+                          <TableHead>Waktu Masuk</TableHead>
                           <TableHead>Nomor Tiket</TableHead>
                           <TableHead>Prioritas</TableHead>
                           <TableHead>Tingkat Kesulitan</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>Estimasi</TableHead>
                           <TableHead>Ditangani Oleh</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -460,7 +490,7 @@ function UserLaporanContent() {
                             <TableCell className="font-medium">{ticket.id}</TableCell>
                             <TableCell>{ticket.title}</TableCell>
                             <TableCell>
-                              {new Date(ticket.created_at).toLocaleDateString("id-ID")}
+                              {formatTicketLocalDateTime(ticket.created_at)}
                             </TableCell>
                             <TableCell className="font-mono text-sm">
                               {ticket.ticket_number}
@@ -470,6 +500,16 @@ function UserLaporanContent() {
                               {getDifficultyBadge(ticket.difficulty_level)}
                             </TableCell>
                             <TableCell>{getStatusBadge(ticket.status)}</TableCell>
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedEstimateTicket(ticket)}
+                              >
+                                {ticket.estimated_completion_at ? "Lihat" : "Belum Ada"}
+                              </Button>
+                            </TableCell>
                             <TableCell>{renderHandledByCell(ticket)}</TableCell>
                           </TableRow>
                         ))}
@@ -491,11 +531,13 @@ function UserLaporanContent() {
                         <TableRow>
                           <TableHead className="w-12">ID</TableHead>
                           <TableHead>Judul</TableHead>
-                          <TableHead>Tanggal</TableHead>
+                          <TableHead>Waktu Masuk</TableHead>
+                          <TableHead>Waktu Selesai</TableHead>
                           <TableHead>Nomor Tiket</TableHead>
                           <TableHead>Prioritas</TableHead>
                           <TableHead>Tingkat Kesulitan</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>Estimasi</TableHead>
                           <TableHead>Ditangani Oleh</TableHead>
                           <TableHead className="w-48">Aksi</TableHead>
                         </TableRow>
@@ -506,7 +548,10 @@ function UserLaporanContent() {
                             <TableCell className="font-medium">{ticket.id}</TableCell>
                             <TableCell>{ticket.title}</TableCell>
                             <TableCell>
-                              {new Date(ticket.created_at).toLocaleDateString("id-ID")}
+                              {formatTicketLocalDateTime(ticket.created_at)}
+                            </TableCell>
+                            <TableCell>
+                              {formatTicketCompletedAt(ticket)}
                             </TableCell>
                             <TableCell className="font-mono text-sm">
                               {ticket.ticket_number}
@@ -516,6 +561,16 @@ function UserLaporanContent() {
                               {getDifficultyBadge(ticket.difficulty_level)}
                             </TableCell>
                             <TableCell>{getStatusBadge(ticket.status)}</TableCell>
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedEstimateTicket(ticket)}
+                              >
+                                {ticket.estimated_completion_at ? "Lihat" : "Belum Ada"}
+                              </Button>
+                            </TableCell>
                             <TableCell>{renderHandledByCell(ticket)}</TableCell>
                             <TableCell>
                               <div className="flex gap-2">
@@ -567,11 +622,13 @@ function UserLaporanContent() {
                         <TableRow>
                           <TableHead className="w-12">ID</TableHead>
                           <TableHead>Judul</TableHead>
-                          <TableHead>Tanggal</TableHead>
+                          <TableHead>Waktu Masuk</TableHead>
+                          <TableHead>Waktu Selesai</TableHead>
                           <TableHead>Nomor Tiket</TableHead>
                           <TableHead>Prioritas</TableHead>
                           <TableHead>Tingkat Kesulitan</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>Estimasi</TableHead>
                           <TableHead>Ditangani Oleh</TableHead>
                           <TableHead className="w-20">Aksi</TableHead>
                         </TableRow>
@@ -582,7 +639,10 @@ function UserLaporanContent() {
                             <TableCell className="font-medium">{ticket.id}</TableCell>
                             <TableCell>{ticket.title}</TableCell>
                             <TableCell>
-                              {new Date(ticket.created_at).toLocaleDateString("id-ID")}
+                              {formatTicketLocalDateTime(ticket.created_at)}
+                            </TableCell>
+                            <TableCell>
+                              {formatTicketCompletedAt(ticket)}
                             </TableCell>
                             <TableCell className="font-mono text-sm">
                               {ticket.ticket_number}
@@ -592,6 +652,19 @@ function UserLaporanContent() {
                               {getDifficultyBadge(ticket.difficulty_level)}
                             </TableCell>
                             <TableCell>{getStatusBadge(ticket.status)}</TableCell>
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedEstimateTicket(ticket)}
+                              >
+                                {ticket.estimated_completion_at ? "Lihat" : "Belum Ada"}
+                              </Button>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {formatTicketEstimate(ticket.estimated_completion_at)}
+                              </p>
+                            </TableCell>
                             <TableCell>{renderHandledByCell(ticket)}</TableCell>
                             <TableCell>
                               <Button
@@ -627,6 +700,17 @@ function UserLaporanContent() {
         ticket={selectedResolutionTicket}
         onAppealSubmitted={fetchTickets}
         onClosed={fetchTickets}
+      />
+      <TicketEstimateDialog
+        open={Boolean(selectedEstimateTicket)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedEstimateTicket(null)
+          }
+        }}
+        ticket={selectedEstimateTicket as TicketEstimateData}
+        currentUserRole="user"
+        currentUserId={auth.user.id}
       />
     </div>
   )

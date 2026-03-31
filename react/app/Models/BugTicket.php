@@ -7,10 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 class BugTicket extends Model
 {
     use HasFactory, SoftDeletes;
+
+    public const STATUS_OPEN = 'open';
+    public const STATUS_PENDING_ESTIMATE = 'pending_estimate';
+    public const STATUS_IN_PROGRESS = 'in_progress';
+    public const STATUS_RESOLVED = 'resolved';
+    public const STATUS_CLOSED = 'closed';
+    public const STATUS_REOPENED = 'diproses kembali';
 
     protected $fillable = [
         'user_id',
@@ -26,10 +34,17 @@ class BugTicket extends Model
         'assigned_to',
         'taken_at',
         'resolved_at',
+        'estimated_completion_at',
+        'estimate_updated_by',
+        'estimate_updated_at',
+        'estimate_change_reason',
         'appeal_count',
     ];
 
-    public const ARCHIVED_STATUSES = ['resolved', 'closed'];
+    public const ARCHIVED_STATUSES = [
+        self::STATUS_RESOLVED,
+        self::STATUS_CLOSED,
+    ];
 
     protected static function boot()
     {
@@ -56,6 +71,8 @@ class BugTicket extends Model
         'deleted_at' => 'datetime',
         'taken_at' => 'datetime',
         'resolved_at' => 'datetime',
+        'estimated_completion_at' => 'datetime',
+        'estimate_updated_at' => 'datetime',
         'collaborators' => 'array',
     ];
 
@@ -72,6 +89,11 @@ class BugTicket extends Model
     public function assignedAdmin(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function estimateUpdatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'estimate_updated_by');
     }
 
     public function messages(): HasMany
@@ -92,6 +114,39 @@ class BugTicket extends Model
     public function isArchivedChat(): bool
     {
         return in_array($this->status, self::ARCHIVED_STATUSES, true);
+    }
+
+    public function hasEstimate(): bool
+    {
+        return $this->estimated_completion_at !== null;
+    }
+
+    public function estimateAssignmentDeadlineAt(): ?Carbon
+    {
+        if (
+            $this->status !== self::STATUS_PENDING_ESTIMATE ||
+            (int) $this->assigned_to <= 0 ||
+            !$this->taken_at ||
+            $this->hasEstimate()
+        ) {
+            return null;
+        }
+
+        return Carbon::parse($this->taken_at)->utc()->addDays(3);
+    }
+
+    public function shouldReleasePendingEstimate($referenceTime = null): bool
+    {
+        $deadline = $this->estimateAssignmentDeadlineAt();
+        if (!$deadline) {
+            return false;
+        }
+
+        $now = $referenceTime
+            ? Carbon::parse($referenceTime)->utc()
+            : now()->utc();
+
+        return $deadline->lessThanOrEqualTo($now);
     }
 
     public function getCollaboratorsDetails()

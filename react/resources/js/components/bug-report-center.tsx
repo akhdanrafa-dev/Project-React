@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { useToast } from "@/components/ui/use-toast"
+import { formatTicketCompletedAt, formatTicketLocalDateTime } from "@/lib/ticket-timing"
 
 import { BugReportChat } from "./bug-report-chat"
 
@@ -50,6 +51,8 @@ interface BugTicket {
     name: string
   } | null
   created_at: string
+  updated_at?: string | null
+  resolved_at?: string | null
   messages?: ChatMessage[]
 }
 
@@ -87,7 +90,7 @@ export function BugReportCenter({
 
       const data = await response.json()
       setTickets(data)
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Gagal mengambil data ticket",
@@ -171,7 +174,7 @@ export function BugReportCenter({
       case "in_progress":
         return "Sedang Diproses"
       case "resolved":
-        return "Terselesaikan"
+        return "Menunggu Verifikasi"
       case "closed":
         return "Ditutup"
       default:
@@ -286,8 +289,13 @@ export function BugReportCenter({
 
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>
-                          {new Date(ticket.created_at).toLocaleDateString('id-ID')}
+                          Masuk: {formatTicketLocalDateTime(ticket.created_at)}
                         </span>
+                        {(ticket.status === "resolved" || ticket.status === "closed") && (
+                          <span>
+                            Selesai: {formatTicketCompletedAt(ticket)}
+                          </span>
+                        )}
                         <span>
                           {ticket.messages?.length ?? 0} pesan
                         </span>

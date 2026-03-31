@@ -172,7 +172,7 @@ export default function AdminITRankingAdmin() {
                     </div>
                     <div className="space-y-2 text-sm border-t pt-3">
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Terselesaikan</span>
+                        <span className="text-muted-foreground">Menunggu Verifikasi</span>
                         <span className="font-medium text-green-600">
                           {admin.resolved} ({admin.resolution_rate}%)
                         </span>
@@ -276,9 +276,9 @@ export default function AdminITRankingAdmin() {
                     <TableHead>Nama</TableHead>
                     <TableHead className="text-center">Bulan Ini</TableHead>
                     <TableHead className="text-center">Total Tiket</TableHead>
-                    <TableHead className="text-center">Terselesaikan</TableHead>
+                    <TableHead className="text-center">Menunggu Verifikasi</TableHead>
                     <TableHead className="text-center">Dalam Proses</TableHead>
-                    <TableHead className="text-center">Belum Diproses</TableHead>
+                    <TableHead className="text-center">Menunggu Estimasi Pengerjaan</TableHead>
                     <TableHead className="text-center">Rata-rata Waktu</TableHead>
                     <TableHead className="text-right">Skor Performa</TableHead>
                   </TableRow>

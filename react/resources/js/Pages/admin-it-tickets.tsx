@@ -2,6 +2,7 @@ import { Head, usePage } from '@inertiajs/react'
 import { AlertCircle, Clock, CheckCircle2, XCircle, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { TicketEstimateDialog } from '@/components/ticket-estimate-dialog'
 import { Badge } from '@/components/ui/badge'
 import {
   Breadcrumb,
@@ -34,6 +35,15 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import AdminITLayout from '@/layouts/app/AdminITLayout'
+import { TicketEstimateData } from '@/lib/ticket-estimate'
+import {
+  getPendingEstimateDeadline,
+  getPendingEstimateRemainingLabel,
+  getTicketStatusLabel,
+  normalizeTicketStatus,
+  TICKET_STATUS,
+} from '@/lib/ticket-status'
+import { formatTicketCompletedAt, formatTicketLocalDateTime } from '@/lib/ticket-timing'
 import type { SharedData } from '@/types'
 
 interface Ticket {
@@ -45,6 +55,20 @@ interface Ticket {
   priority: string
   category: string
   created_at: string
+  taken_at?: string | null
+  updated_at?: string | null
+  resolved_at?: string | null
+  estimated_completion_at?: string | null
+  estimate_updated_at?: string | null
+  estimate_change_reason?: string | null
+  estimateUpdatedBy?: {
+    id: number
+    name: string
+  } | null
+  estimate_updated_by_user?: {
+    id: number
+    name: string
+  } | null
   user: {
     id: number
     name: string
@@ -64,6 +88,8 @@ export default function AdminITTickets() {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState('open')
+  const [selectedEstimateTicket, setSelectedEstimateTicket] = useState<Ticket | null>(null)
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
 
   useEffect(() => {
     let isMounted = true
@@ -113,16 +139,69 @@ export default function AdminITTickets() {
   }, [])
 
   useEffect(() => {
+    let isMounted = true
+
+    const fetchUnreadNotificationCount = async () => {
+      try {
+        const response = await fetch('/api/admin-it/notifications/unread-count', {
+          cache: 'no-store',
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch unread notifications')
+        }
+
+        const data = await response.json()
+
+        if (isMounted) {
+          setUnreadNotificationCount(Number(data.unread_count ?? 0))
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+
+    fetchUnreadNotificationCount()
+
+    const interval = setInterval(fetchUnreadNotificationCount, 15000)
+    const handleFocus = () => {
+      fetchUnreadNotificationCount()
+    }
+
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [])
+
+  useEffect(() => {
     let filtered = tickets
 
     if (activeTab === 'open') {
-      filtered = filtered.filter(t => t.status === 'open')
+      filtered = filtered.filter(
+        (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.OPEN,
+      )
+    } else if (activeTab === 'pending') {
+      filtered = filtered.filter(
+        (ticket) =>
+          normalizeTicketStatus(ticket.status) === TICKET_STATUS.PENDING_ESTIMATE,
+      )
     } else if (activeTab === 'progress') {
-      filtered = filtered.filter(t => t.status === 'in_progress')
+      filtered = filtered.filter(
+        (ticket) =>
+          normalizeTicketStatus(ticket.status) === TICKET_STATUS.IN_PROGRESS,
+      )
     } else if (activeTab === 'resolved') {
-      filtered = filtered.filter(t => t.status === 'resolved')
+      filtered = filtered.filter(
+        (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.RESOLVED,
+      )
     } else if (activeTab === 'closed') {
-      filtered = filtered.filter(t => t.status === 'closed')
+      filtered = filtered.filter(
+        (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.CLOSED,
+      )
     }
 
     if (searchTerm) {
@@ -154,6 +233,8 @@ export default function AdminITTickets() {
     switch (status) {
       case 'open':
         return 'bg-blue-100 text-blue-800'
+      case 'pending_estimate':
+        return 'bg-amber-100 text-amber-800'
       case 'in_progress':
         return 'bg-purple-100 text-purple-800'
       case 'resolved':
@@ -166,24 +247,15 @@ export default function AdminITTickets() {
   }
 
   const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'open':
-        return 'Terbuka'
-      case 'in_progress':
-        return 'Dalam Proses'
-      case 'resolved':
-        return 'Terselesaikan'
-      case 'closed':
-        return 'Ditutup'
-      default:
-        return status
-    }
+    return getTicketStatusLabel(status)
   }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'open':
         return <AlertCircle className="h-4 w-4" />
+      case 'pending_estimate':
+        return <Clock className="h-4 w-4" />
       case 'in_progress':
         return <Clock className="h-4 w-4" />
       case 'resolved':
@@ -204,6 +276,23 @@ export default function AdminITTickets() {
     return ticket.collaborators.map(Number).includes(Number(currentUserId))
   }
 
+  const openTickets = tickets.filter(
+    (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.OPEN,
+  )
+  const pendingEstimateTickets = tickets.filter(
+    (ticket) =>
+      normalizeTicketStatus(ticket.status) === TICKET_STATUS.PENDING_ESTIMATE,
+  )
+  const inProgressTickets = tickets.filter(
+    (ticket) =>
+      normalizeTicketStatus(ticket.status) === TICKET_STATUS.IN_PROGRESS,
+  )
+  const resolvedTickets = tickets.filter(
+    (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.RESOLVED,
+  )
+  const closedTickets = tickets.filter(
+    (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.CLOSED,
+  )
   const TicketTable = ({ data }: { data: Ticket[] }) => (
     <div className="overflow-x-auto">
       <Table>
@@ -215,14 +304,16 @@ export default function AdminITTickets() {
             <TableHead>Prioritas</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Pengguna</TableHead>
-            <TableHead>Dibuat</TableHead>
+            <TableHead>Waktu Masuk</TableHead>
+            <TableHead>Waktu Selesai</TableHead>
+            <TableHead>Estimasi</TableHead>
             <TableHead>Aksi</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                 Tidak ada tiket
               </TableCell>
             </TableRow>
@@ -267,17 +358,44 @@ export default function AdminITTickets() {
                   </div>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {new Date(ticket.created_at).toLocaleDateString('id-ID')}
+                  {formatTicketLocalDateTime(ticket.created_at)}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {formatTicketCompletedAt(ticket)}
                 </TableCell>
                 <TableCell>
-                  {ticket.status !== 'closed' ? (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">
+                      {ticket.estimated_completion_at
+                        ? formatTicketLocalDateTime(ticket.estimated_completion_at)
+                        : 'Belum diatur'}
+                    </p>
+                    {normalizeTicketStatus(ticket.status) === TICKET_STATUS.PENDING_ESTIMATE ? (
+                      <p className="text-xs text-muted-foreground">
+                        Batas atur estimasi:{' '}
+                        {formatTicketLocalDateTime(getPendingEstimateDeadline(ticket))}{' '}
+                        ({getPendingEstimateRemainingLabel(ticket) ?? '-'})
+                      </p>
+                    ) : null}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {normalizeTicketStatus(ticket.status) ===
+                    TICKET_STATUS.PENDING_ESTIMATE &&
+                  ticket.assigned_to === currentUserId ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedEstimateTicket(ticket)}
+                    >
+                      Atur Estimasi
+                    </Button>
+                  ) : normalizeTicketStatus(ticket.status) !== TICKET_STATUS.CLOSED ? (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        const a = document.createElement('a')
-                        a.href = `/admin-it/ticket/${ticket.id}`
-                        a.click()
+                        window.location.href = `/admin-it/ticket/${ticket.id}`
                       }}
                     >
                       Buka
@@ -337,6 +455,25 @@ export default function AdminITTickets() {
           </Card>
         )}
 
+        {unreadNotificationCount > 0 && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardHeader>
+              <CardTitle className="text-base text-amber-900">
+                Notifikasi Baru
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p className="text-sm text-amber-900">
+                Anda mendapat notifikasi baru. {unreadNotificationCount} notifikasi
+                tiket belum dibaca.
+              </p>
+              <Button asChild type="button" variant="outline">
+                <a href="/admin-it/notifications">Buka riwayat notifikasi</a>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Search Bar */}
         <Card>
           <CardContent className="pt-6">
@@ -353,7 +490,7 @@ export default function AdminITTickets() {
         </Card>
 
         {/* Summary Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Terbuka</CardTitle>
@@ -361,31 +498,43 @@ export default function AdminITTickets() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {tickets.filter(t => t.status === 'open').length}
+                {openTickets.length}
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Dalam Proses</CardTitle>
+              <CardTitle className="text-sm font-medium">Menunggu Estimasi Pengerjaan</CardTitle>
+              <Clock className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {pendingEstimateTickets.length}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Sedang Diproses</CardTitle>
               <Clock className="h-4 w-4 text-purple-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {tickets.filter(t => t.status === 'in_progress').length}
+                {inProgressTickets.length}
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Terselesaikan</CardTitle>
+              <CardTitle className="text-sm font-medium">Menunggu Verifikasi</CardTitle>
               <CheckCircle2 className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {tickets.filter(t => t.status === 'resolved').length}
+                {resolvedTickets.length}
               </div>
             </CardContent>
           </Card>
@@ -397,7 +546,7 @@ export default function AdminITTickets() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {tickets.filter(t => t.status === 'closed').length}
+                {closedTickets.length}
               </div>
             </CardContent>
           </Card>
@@ -410,22 +559,29 @@ export default function AdminITTickets() {
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="open">
-                  Terbuka ({tickets.filter(t => t.status === 'open').length})
+                  Terbuka ({openTickets.length})
+                </TabsTrigger>
+                <TabsTrigger value="pending">
+                  Menunggu Estimasi Pengerjaan ({pendingEstimateTickets.length})
                 </TabsTrigger>
                 <TabsTrigger value="progress">
-                  Dalam Proses ({tickets.filter(t => t.status === 'in_progress').length})
+                  Sedang Diproses ({inProgressTickets.length})
                 </TabsTrigger>
                 <TabsTrigger value="resolved">
-                  Terselesaikan ({tickets.filter(t => t.status === 'resolved').length})
+                  Menunggu Verifikasi ({resolvedTickets.length})
                 </TabsTrigger>
                 <TabsTrigger value="closed">
-                  Ditutup ({tickets.filter(t => t.status === 'closed').length})
+                  Ditutup ({closedTickets.length})
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="open" className="mt-6">
+                <TicketTable data={filteredTickets} />
+              </TabsContent>
+
+              <TabsContent value="pending" className="mt-6">
                 <TicketTable data={filteredTickets} />
               </TabsContent>
 
@@ -444,6 +600,24 @@ export default function AdminITTickets() {
           </CardContent>
         </Card>
       </div>
+      <TicketEstimateDialog
+        open={Boolean(selectedEstimateTicket)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedEstimateTicket(null)
+          }
+        }}
+        ticket={selectedEstimateTicket as TicketEstimateData}
+        currentUserRole={typeof auth?.user?.role === 'string' ? auth.user.role : ''}
+        currentUserId={currentUserId}
+        onUpdated={(updatedTicket) => {
+          const typedTicket = updatedTicket as Ticket
+          setTickets((prevTickets) =>
+            prevTickets.map((ticket) => (ticket.id === typedTicket.id ? typedTicket : ticket)),
+          )
+          setSelectedEstimateTicket(typedTicket)
+        }}
+      />
     </AdminITLayout>
   )
 }

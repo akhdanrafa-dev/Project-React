@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
 import RootLayout from '@/layouts/app/RootLayouts';
+import { normalizeTicketStatus, TICKET_STATUS } from '@/lib/ticket-status';
 
 interface BugTicket {
     id: number;
@@ -58,7 +59,7 @@ interface BugTicket {
     };
 }
 
-type TicketStatus = 'open' | 'in_progress' | 'resolved';
+type TicketStatus = 'open' | 'pending_estimate' | 'in_progress' | 'resolved';
 type DateSortOrder = 'newest_first' | 'oldest_first';
 
 type ParsedImportResult = {
@@ -76,12 +77,16 @@ const REPORT_STATUS_META: Record<TicketStatus, { label: string; color: string }>
         label: 'Terbuka',
         color: '#f97316',
     },
+    pending_estimate: {
+        label: 'Menunggu Estimasi Pengerjaan',
+        color: '#f59e0b',
+    },
     in_progress: {
-        label: 'Dalam Proses',
+        label: 'Sedang Diproses',
         color: '#3b82f6',
     },
     resolved: {
-        label: 'Terselesaikan',
+        label: 'Menunggu Verifikasi',
         color: '#22c55e',
     },
 };
@@ -124,7 +129,7 @@ const DATE_SORT_OPTIONS: Array<{ value: DateSortOrder; label: string }> = [
     { value: 'oldest_first', label: 'Terlama ke Terbaru' },
 ];
 
-const normalizeStatus = (status?: string) => status?.toLowerCase() ?? '';
+const normalizeStatus = (status?: string) => normalizeTicketStatus(status);
 
 const normalizeHeader = (value: string) =>
     value
@@ -293,6 +298,16 @@ const normalizeImportedStatus = (value: string): string => {
     const normalized = normalizeHeader(value);
 
     if (['open', 'terbuka'].includes(normalized)) return 'open';
+    if (
+        [
+            'pending_estimate',
+            'pendingestimate',
+            'belum_diproses',
+            'belumdiproses',
+        ].includes(normalized)
+    ) {
+        return 'pending_estimate';
+    }
     if (
         [
             'in_progress',
@@ -638,18 +653,24 @@ function DeveloperPeriodReportContent() {
 
     const reportStatusCounts = useMemo(() => {
         const open = reportTickets.filter(
-            (ticket) => normalizeStatus(ticket.status) === 'open',
+            (ticket) => normalizeStatus(ticket.status) === TICKET_STATUS.OPEN,
+        ).length;
+        const pendingEstimate = reportTickets.filter(
+            (ticket) =>
+                normalizeStatus(ticket.status) ===
+                TICKET_STATUS.PENDING_ESTIMATE,
         ).length;
         const inProgress = reportTickets.filter(
-            (ticket) => normalizeStatus(ticket.status) === 'in_progress',
+            (ticket) => normalizeStatus(ticket.status) === TICKET_STATUS.IN_PROGRESS,
         ).length;
         const resolved = reportTickets.filter(
-            (ticket) => normalizeStatus(ticket.status) === 'resolved',
+            (ticket) => normalizeStatus(ticket.status) === TICKET_STATUS.RESOLVED,
         ).length;
 
         return {
             all: reportTickets.length,
             open,
+            pending_estimate: pendingEstimate,
             in_progress: inProgress,
             resolved,
         };
@@ -980,7 +1001,7 @@ function DeveloperPeriodReportContent() {
                         ticket_number: ticket.ticket_number ?? null,
                         title: ticket.title ?? null,
                         priority: ticket.priority ?? 'medium',
-                        difficulty_level: ticket.difficulty_level ?? 'medium',
+                        difficulty_level: ticket.difficulty_level ?? null,
                         status: ticket.status ?? 'open',
                         created_at: ticket.created_at,
                         user: {

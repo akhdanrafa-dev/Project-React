@@ -2,6 +2,7 @@ import { Head, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
     CheckCircle2,
+    Clock3,
     ImagePlus,
     MessageSquare,
     Trash2,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 
+import { TicketEstimateDialog } from '@/components/ticket-estimate-dialog';
 import { Badge } from '@/components/ui/badge';
 import {
     Breadcrumb,
@@ -29,6 +31,11 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger } from '@/components/ui/sidebar-trigger';
 import AdminITLayout from '@/layouts/app/AdminITLayout';
+import {
+    formatTicketEstimate,
+    TicketEstimateData,
+} from '@/lib/ticket-estimate';
+import { getTicketStatusLabel } from '@/lib/ticket-status';
 import type { SharedData } from '@/types';
 
 interface AdminUser {
@@ -71,6 +78,17 @@ interface Ticket {
         name: string;
     } | null;
     assigned_admin?: {
+        id: number;
+        name: string;
+    } | null;
+    estimated_completion_at?: string | null;
+    estimate_updated_at?: string | null;
+    estimate_change_reason?: string | null;
+    estimateUpdatedBy?: {
+        id: number;
+        name: string;
+    } | null;
+    estimate_updated_by_user?: {
         id: number;
         name: string;
     } | null;
@@ -230,6 +248,7 @@ export default function AdminITChats() {
     >([]);
     const [isInvitingCollaborator, setIsInvitingCollaborator] = useState(false);
     const [showCollaborationModal, setShowCollaborationModal] = useState(false);
+    const [estimateDialogOpen, setEstimateDialogOpen] = useState(false);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const autoScrollRef = useRef(true);
@@ -771,18 +790,7 @@ export default function AdminITChats() {
     };
 
     const getStatusLabel = (status: string) => {
-        switch (status) {
-            case 'open':
-                return 'Terbuka';
-            case 'in_progress':
-                return 'Dalam Proses';
-            case 'resolved':
-                return 'Terselesaikan';
-            case 'closed':
-                return 'Ditutup';
-            default:
-                return status;
-        }
+        return getTicketStatusLabel(status);
     };
 
     const getStatusColor = (status: string) => {
@@ -882,7 +890,7 @@ export default function AdminITChats() {
                     <Card className="h-full">
                         <CardHeader>
                             <CardTitle className="text-base">
-                                Tiket Dalam Proses
+                                Tiket Sedang Diproses
                             </CardTitle>
                             <CardDescription>
                                 Chat hanya tersedia untuk tiket yang sedang
@@ -1009,6 +1017,29 @@ export default function AdminITChats() {
                                             </div>
                                         )}
                                     </CardDescription>
+                                    {selectedTicket ? (
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                    setEstimateDialogOpen(true)
+                                                }
+                                            >
+                                                <Clock3 className="mr-2 h-4 w-4" />
+                                                Estimasi
+                                            </Button>
+                                            <span className="text-xs text-muted-foreground">
+                                                Estimasi saat ini:{' '}
+                                                <span className="font-medium text-foreground">
+                                                    {formatTicketEstimate(
+                                                        selectedTicket.estimated_completion_at,
+                                                    )}
+                                                </span>
+                                            </span>
+                                        </div>
+                                    ) : null}
                                 </div>
                                 <Button
                                     variant="outline"
@@ -1136,6 +1167,27 @@ export default function AdminITChats() {
                             >
                                 {selectedTicket ? (
                                     <div className="rounded-md border bg-muted/20 p-3">
+                                        <div className="mb-3 rounded-md border bg-background/80 p-3">
+                                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                                Estimasi selesai
+                                            </p>
+                                            <p className="mt-1 text-sm font-semibold">
+                                                {formatTicketEstimate(
+                                                    selectedTicket.estimated_completion_at,
+                                                )}
+                                            </p>
+                                            {selectedTicket.estimateUpdatedBy
+                                                ?.name ? (
+                                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                                    Diperbarui oleh{' '}
+                                                    {
+                                                        selectedTicket
+                                                            .estimateUpdatedBy
+                                                            .name
+                                                    }
+                                                </p>
+                                            ) : null}
+                                        </div>
                                         <div className="mb-2 flex items-center justify-between">
                                             <p className="text-xs font-medium">
                                                 Galeri Bukti User
@@ -1233,7 +1285,7 @@ export default function AdminITChats() {
                                                         }
                                                     >
                                                         <CheckCircle2 className="mr-1 h-3 w-3" />
-                                                        Tandai Terselesaikan
+                                                        Tandai Menunggu Verifikasi
                                                     </Button>
                                                 </>
                                             )}
@@ -1258,7 +1310,7 @@ export default function AdminITChats() {
                                                     }
                                                 >
                                                     <CheckCircle2 className="mr-1 h-3 w-3" />
-                                                    Tandai Terselesaikan
+                                                    Tandai Menunggu Verifikasi
                                                 </Button>
                                             )}
                                     </div>
@@ -1538,6 +1590,33 @@ export default function AdminITChats() {
                             </Card>
                         </div>
                     )}
+                <TicketEstimateDialog
+                    open={estimateDialogOpen}
+                    onOpenChange={setEstimateDialogOpen}
+                    ticket={selectedTicket as TicketEstimateData}
+                    currentUserRole={
+                        typeof auth.user?.role === 'string' ? auth.user.role : ''
+                    }
+                    currentUserId={currentUserId}
+                    onUpdated={(updatedTicket) => {
+                        const typedTicket = normalizeTicket(
+                            updatedTicket as Ticket,
+                        );
+
+                        setSelectedTicket(typedTicket);
+                        setTickets((prevTickets) =>
+                            prevTickets.map((ticket) =>
+                                ticket.id === typedTicket.id
+                                    ? typedTicket
+                                    : ticket,
+                            ),
+                        );
+
+                        if (typedTicket.collaboration_type === 'collab') {
+                            void fetchCollaboratorsDetails(typedTicket.id);
+                        }
+                    }}
+                />
             </div>
         </AdminITLayout>
     );

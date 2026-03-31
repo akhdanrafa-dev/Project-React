@@ -14,7 +14,9 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('ALTER TABLE products MODIFY discount DECIMAL(12,2) NOT NULL DEFAULT 0');
+        DB::statement(
+            "ALTER TABLE bug_tickets MODIFY difficulty_level ENUM('easy', 'medium', 'hard') NULL DEFAULT NULL"
+        );
     }
 
     /**
@@ -26,6 +28,8 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('ALTER TABLE products MODIFY discount DECIMAL(5,2) NOT NULL DEFAULT 0');
+        DB::statement(
+            "ALTER TABLE bug_tickets MODIFY difficulty_level ENUM('easy', 'medium', 'hard') NOT NULL DEFAULT 'medium'"
+        );
     }
 };

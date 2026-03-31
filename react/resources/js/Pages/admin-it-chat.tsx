@@ -2,6 +2,7 @@ import { Head, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
     CheckCircle2,
+    Clock3,
     Clock,
     ImagePlus,
     Send,
@@ -9,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { TicketEstimateDialog } from '@/components/ticket-estimate-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +23,13 @@ import {
 import { Input } from '@/components/ui/input';
 import AdminITLayout from '@/layouts/app/AdminITLayout';
 import { fetchWithCsrfRetry } from '@/lib/csrf';
+import { formatTicketEstimate, TicketEstimateData } from '@/lib/ticket-estimate';
+import {
+    getPendingEstimateDeadline,
+    getTicketStatusLabel,
+    normalizeTicketStatus,
+    TICKET_STATUS,
+} from '@/lib/ticket-status';
 import type { SharedData } from '@/types';
 
 interface ChatMessage {
@@ -57,12 +66,24 @@ interface Ticket {
     collaboration_type?: string;
     collaborators?: number[] | null;
     created_at: string;
+    taken_at?: string | null;
     assigned_to?: number | null;
     assignedAdmin?: {
         id: number;
         name: string;
     } | null;
     assigned_admin?: {
+        id: number;
+        name: string;
+    } | null;
+    estimated_completion_at?: string | null;
+    estimate_updated_at?: string | null;
+    estimate_change_reason?: string | null;
+    estimateUpdatedBy?: {
+        id: number;
+        name: string;
+    } | null;
+    estimate_updated_by_user?: {
         id: number;
         name: string;
     } | null;
@@ -100,6 +121,7 @@ export default function AdminITChat({ ticketId }: Props) {
     const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<
         string | null
     >(null);
+    const [estimateDialogOpen, setEstimateDialogOpen] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const currentUserId = auth.user?.id || 0;
@@ -355,6 +377,8 @@ export default function AdminITChat({ ticketId }: Props) {
 
     const getStatusColor = (status: string) => {
         switch (status) {
+            case 'pending_estimate':
+                return 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200';
             case 'in_progress':
                 return 'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-200';
             case 'resolved':
@@ -366,7 +390,7 @@ export default function AdminITChat({ ticketId }: Props) {
         }
     };
 
-    const getDifficultyColor = (difficulty: string) => {
+    const getDifficultyColor = (difficulty?: string | null) => {
         switch (difficulty) {
             case 'easy':
                 return 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-200';
@@ -376,6 +400,19 @@ export default function AdminITChat({ ticketId }: Props) {
                 return 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-200';
             default:
                 return 'bg-muted text-muted-foreground';
+        }
+    };
+
+    const getDifficultyLabel = (difficulty?: string | null) => {
+        switch (difficulty) {
+            case 'easy':
+                return 'Mudah';
+            case 'medium':
+                return 'Sedang';
+            case 'hard':
+                return 'Sulit';
+            default:
+                return 'Belum di tentukan';
         }
     };
 
@@ -412,6 +449,14 @@ export default function AdminITChat({ ticketId }: Props) {
 
     const userImageMessages = ticket.messages.filter(
         (msg) => msg.user?.role === 'user' && !!msg.image_url,
+    );
+    const normalizedTicketStatus = normalizeTicketStatus(ticket.status);
+    const isChatDisabled = [
+        TICKET_STATUS.PENDING_ESTIMATE,
+        TICKET_STATUS.RESOLVED,
+        TICKET_STATUS.CLOSED,
+    ].includes(
+        normalizedTicketStatus as 'pending_estimate' | 'resolved' | 'closed',
     );
 
     return (
@@ -456,10 +501,29 @@ export default function AdminITChat({ ticketId }: Props) {
                                             ticket.status,
                                         )}
                                     >
-                                        {ticket.status === 'in_progress'
-                                            ? 'Dalam Proses'
-                                            : ticket.status}
+                                        {getTicketStatusLabel(ticket.status)}
                                     </Badge>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            setEstimateDialogOpen(true)
+                                        }
+                                    >
+                                        <Clock3 className="mr-2 h-4 w-4" />
+                                        Estimasi
+                                    </Button>
+                                    <span className="text-xs text-muted-foreground">
+                                        Estimasi saat ini:{' '}
+                                        <span className="font-medium text-foreground">
+                                            {formatTicketEstimate(
+                                                ticket.estimated_completion_at,
+                                            )}
+                                        </span>
+                                    </span>
                                 </div>
                             </CardHeader>
 
@@ -567,10 +631,7 @@ export default function AdminITChat({ ticketId }: Props) {
                                                 setMessage(e.target.value)
                                             }
                                             disabled={
-                                                sending ||
-                                                ['resolved', 'closed'].includes(
-                                                    ticket.status,
-                                                )
+                                                sending || isChatDisabled
                                             }
                                         />
                                         <input
@@ -593,10 +654,7 @@ export default function AdminITChat({ ticketId }: Props) {
                                                 fileInputRef.current?.click()
                                             }
                                             disabled={
-                                                sending ||
-                                                ['resolved', 'closed'].includes(
-                                                    ticket.status,
-                                                )
+                                                sending || isChatDisabled
                                             }
                                         >
                                             <ImagePlus className="h-4 w-4" />
@@ -607,9 +665,7 @@ export default function AdminITChat({ ticketId }: Props) {
                                                 sending ||
                                                 (!message.trim() &&
                                                     !selectedImage) ||
-                                                ['resolved', 'closed'].includes(
-                                                    ticket.status,
-                                                )
+                                                isChatDisabled
                                             }
                                         >
                                             <Send className="h-4 w-4" />
@@ -702,10 +758,10 @@ export default function AdminITChat({ ticketId }: Props) {
                                     </p>
                                     <Badge
                                         className={getDifficultyColor(
-                                            ticket.difficulty_level || 'medium',
+                                            ticket.difficulty_level,
                                         )}
                                     >
-                                        {ticket.difficulty_level || 'medium'}
+                                        {getDifficultyLabel(ticket.difficulty_level)}
                                     </Badge>
                                 </div>
                                 <div>
@@ -717,10 +773,24 @@ export default function AdminITChat({ ticketId }: Props) {
                                             ticket.status,
                                         )}
                                     >
-                                        {ticket.status === 'in_progress'
-                                            ? 'Dalam Proses'
-                                            : ticket.status}
+                                        {getTicketStatusLabel(ticket.status)}
                                     </Badge>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">
+                                        Estimasi Selesai
+                                    </p>
+                                    <p className="text-sm font-medium">
+                                        {formatTicketEstimate(
+                                            ticket.estimated_completion_at,
+                                        )}
+                                    </p>
+                                    {ticket.estimateUpdatedBy?.name ? (
+                                        <p className="text-xs text-muted-foreground">
+                                            Diperbarui oleh{' '}
+                                            {ticket.estimateUpdatedBy.name}
+                                        </p>
+                                    ) : null}
                                 </div>
                             </CardContent>
                         </Card>
@@ -774,7 +844,8 @@ export default function AdminITChat({ ticketId }: Props) {
                                             {`Sudah di handle oleh (${assignedAdminName})`}
                                         </p>
                                     )
-                                ) : ticket.status === 'open' ? (
+                                ) : normalizedTicketStatus ===
+                                  TICKET_STATUS.OPEN ? (
                                     <p className="text-sm text-muted-foreground">
                                         Belum di-handle
                                     </p>
@@ -850,7 +921,7 @@ export default function AdminITChat({ ticketId }: Props) {
                             </CardContent>
                         </Card>
 
-                        {ticket.status === 'open' && (
+                        {normalizedTicketStatus === TICKET_STATUS.OPEN && (
                             <Button
                                 className="w-full bg-blue-600 hover:bg-blue-700"
                                 onClick={handleTakeTicket}
@@ -859,14 +930,36 @@ export default function AdminITChat({ ticketId }: Props) {
                             </Button>
                         )}
 
-                        {ticket.status === 'in_progress' && (
+                        {normalizedTicketStatus ===
+                            TICKET_STATUS.PENDING_ESTIMATE && (
+                            <Card className="border-amber-200 bg-amber-50">
+                                <CardContent className="pt-6">
+                                    <p className="text-sm font-medium text-amber-900">
+                                        Tiket sudah diambil tetapi belum diproses.
+                                    </p>
+                                    <p className="mt-1 text-sm text-amber-800">
+                                        Atur estimasi selesai terlebih dahulu agar
+                                        tiket berpindah ke status Sedang diproses.
+                                    </p>
+                                    <p className="mt-2 text-xs text-amber-700">
+                                        Batas atur estimasi:{' '}
+                                        {formatTicketEstimate(
+                                            getPendingEstimateDeadline(ticket)?.toISOString() ??
+                                                null,
+                                        )}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {normalizedTicketStatus === TICKET_STATUS.IN_PROGRESS && (
                             <div className="space-y-2">
                                 <Button
                                     className="w-full bg-green-600 hover:bg-green-700"
                                     onClick={handleResolveTicket}
                                 >
                                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                                    Tandai Terselesaikan
+                                    Tandai Menunggu Verifikasi
                                 </Button>
                                 <Button
                                     variant="outline"
@@ -881,6 +974,23 @@ export default function AdminITChat({ ticketId }: Props) {
                     </div>
                 </div>
             </div>
+            <TicketEstimateDialog
+                open={estimateDialogOpen}
+                onOpenChange={setEstimateDialogOpen}
+                ticket={ticket as TicketEstimateData}
+                currentUserRole={
+                    typeof auth.user?.role === 'string' ? auth.user.role : ''
+                }
+                currentUserId={currentUserId}
+                onUpdated={(updatedTicket) => {
+                    setTicket(updatedTicket as Ticket);
+
+                    const updatedTypedTicket = updatedTicket as Ticket;
+                    if (updatedTypedTicket.collaboration_type === 'collab') {
+                        void fetchCollaborators(updatedTypedTicket.id);
+                    }
+                }}
+            />
         </AdminITLayout>
     );
 }

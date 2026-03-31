@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
+import { formatTicketLocalDateTime } from "@/lib/ticket-timing"
 
 import { ReportChatbot } from "./report-chatbot"
 
@@ -14,12 +15,33 @@ interface ChatView {
   type: "initial" | "chatbot" | "center"
 }
 
+interface FloatingTicketMessage {
+  is_read: boolean
+  user_id: number
+}
+
+interface FloatingTicket {
+  id: number
+  ticket_number?: string
+  title: string
+  status: string
+  created_at: string
+  assigned_to?: number | null
+  assignedAdmin?: {
+    name?: string | null
+  } | null
+  assigned_admin?: {
+    name?: string | null
+  } | null
+  messages?: FloatingTicketMessage[]
+}
+
 export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [currentView, setCurrentView] = useState<ChatView>({ type: "initial" })
   const [unreadCount, setUnreadCount] = useState(0)
   const [prevUnreadCount, setPrevUnreadCount] = useState(0)
-  const [tickets, setTickets] = useState<any[]>([])
+  const [tickets, setTickets] = useState<FloatingTicket[]>([])
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
@@ -66,7 +88,7 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
       const response = await fetch("/api/bug-tickets")
       if (response.ok) {
         const data = await response.json()
-        setTickets(data)
+        setTickets(Array.isArray(data) ? (data as FloatingTicket[]) : [])
       }
     } catch (error) {
       console.error("Error fetching tickets:", error)
@@ -181,7 +203,7 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
                 ) : (
                   tickets.map((ticket) => {
                     const unreadMessages = ticket.messages?.filter(
-                      (msg: any) => !msg.is_read && msg.user_id !== currentUserId
+                      (msg) => !msg.is_read && msg.user_id !== currentUserId
                     ).length ?? 0
                     const assignedAdminName = getAssignedAdminName(ticket)
 
@@ -216,7 +238,7 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {ticket.messages?.length ?? 0} pesan •{" "}
-                          {new Date(ticket.created_at).toLocaleDateString("id-ID")}
+                          {formatTicketLocalDateTime(ticket.created_at)}
                         </p>
                       </div>
                     )
@@ -250,7 +272,7 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
                 ) : (
                   tickets.map((ticket) => {
                     const unreadMessages = ticket.messages?.filter(
-                      (msg: any) => !msg.is_read && msg.user_id !== currentUserId
+                      (msg) => !msg.is_read && msg.user_id !== currentUserId
                     ).length ?? 0
                     const assignedAdminName = getAssignedAdminName(ticket)
 
@@ -285,7 +307,7 @@ export function FloatingChatBubble({ currentUserId }: FloatingChatBubbleProps) {
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {ticket.messages?.length ?? 0} pesan •{" "}
-                          {new Date(ticket.created_at).toLocaleDateString("id-ID")}
+                          {formatTicketLocalDateTime(ticket.created_at)}
                         </p>
                       </div>
                     )

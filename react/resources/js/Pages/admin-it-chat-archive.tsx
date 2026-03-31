@@ -21,6 +21,10 @@ import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger } from '@/components/ui/sidebar-trigger';
 import { useToast } from '@/components/ui/use-toast';
 import AdminITLayout from '@/layouts/app/AdminITLayout';
+import {
+    formatTicketCompletedAt,
+    formatTicketLocalDateTime,
+} from '@/lib/ticket-timing';
 import type { SharedData } from '@/types';
 
 const ARCHIVED_STATUSES = ['closed'];
@@ -46,6 +50,7 @@ interface Ticket {
     status: string;
     priority: string;
     created_at: string;
+    updated_at?: string | null;
     resolved_at?: string | null;
     assigned_to?: number | null;
     collaboration_type?: string;
@@ -286,7 +291,7 @@ export default function AdminITChatArchive() {
                             }
                         >
                             {ticket.status === 'resolved'
-                                ? 'Terselesaikan'
+                                ? 'Menunggu Verifikasi'
                                 : 'Ditutup'}
                         </Badge>
                         {isCurrentAdminCollaborator(ticket) && (
@@ -325,6 +330,8 @@ export default function AdminITChatArchive() {
                         Prioritas: {ticket.priority}
                     </Badge>
                     <p>{ticket.user.name}</p>
+                    <p>Masuk: {formatTicketLocalDateTime(ticket.created_at)}</p>
+                    <p>Selesai: {formatTicketCompletedAt(ticket)}</p>
                 </div>
             </div>
         );
@@ -429,30 +436,46 @@ export default function AdminITChatArchive() {
                                             : 'Tidak ada tiket terpilih'}
                                     </CardDescription>
                                     {selectedTicket && (
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <Badge
-                                                className={
-                                                    selectedTicket.status ===
-                                                    'closed'
-                                                        ? 'bg-muted text-muted-foreground'
-                                                        : 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-200'
-                                                }
-                                            >
-                                                {selectedTicket.status ===
-                                                'resolved'
-                                                    ? 'Terselesaikan'
-                                                    : 'Ditutup'}
-                                            </Badge>
-                                            {isCurrentAdminCollaborator(
-                                                selectedTicket,
-                                            ) && (
+                                        <div className="mt-2 space-y-2">
+                                            <div className="flex items-center gap-2">
                                                 <Badge
-                                                    variant="outline"
-                                                    className="border-cyan-300/70 bg-cyan-500/15 text-cyan-700 dark:border-cyan-400/50 dark:bg-cyan-500/20 dark:text-cyan-200"
+                                                    className={
+                                                        selectedTicket.status ===
+                                                        'closed'
+                                                            ? 'bg-muted text-muted-foreground'
+                                                            : 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-200'
+                                                    }
                                                 >
-                                                    Collab
+                                                    {selectedTicket.status ===
+                                                    'resolved'
+                                                        ? 'Menunggu Verifikasi'
+                                                        : 'Ditutup'}
                                                 </Badge>
-                                            )}
+                                                {isCurrentAdminCollaborator(
+                                                    selectedTicket,
+                                                ) && (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="border-cyan-300/70 bg-cyan-500/15 text-cyan-700 dark:border-cyan-400/50 dark:bg-cyan-500/20 dark:text-cyan-200"
+                                                    >
+                                                        Collab
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <div className="space-y-1 text-xs text-muted-foreground">
+                                                <p>
+                                                    Waktu masuk:{' '}
+                                                    {formatTicketLocalDateTime(
+                                                        selectedTicket.created_at,
+                                                    )}
+                                                </p>
+                                                <p>
+                                                    Waktu selesai:{' '}
+                                                    {formatTicketCompletedAt(
+                                                        selectedTicket,
+                                                    )}
+                                                </p>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
