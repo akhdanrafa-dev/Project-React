@@ -1,5 +1,5 @@
 import { ChevronDown, Loader2, RefreshCw } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { TicketEstimateDialog } from '@/components/ticket-estimate-dialog';
 import { Badge } from '@/components/ui/badge';
@@ -93,6 +93,8 @@ type StatusFilter =
     | 'in_progress'
     | 'resolved';
 
+const NO_ADMIN_REPORT_VALUE = '__no_admin_report__';
+
 const DIFFICULTY_OPTIONS = [
     { value: 'easy', label: 'Mudah' },
     { value: 'medium', label: 'Sedang' },
@@ -181,6 +183,7 @@ function DeveloperToolsContent() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [adminReportFilter, setAdminReportFilter] = useState('all');
     const [reportStartDate, setReportStartDate] = useState('');
     const [reportEndDate, setReportEndDate] = useState('');
     const [updatingTicketId, setUpdatingTicketId] = useState<number | null>(
@@ -194,7 +197,7 @@ function DeveloperToolsContent() {
     const [estimateDialogTicket, setEstimateDialogTicket] =
         useState<BugTicket | null>(null);
 
-    const fetchTickets = async () => {
+    const fetchTickets = useCallback(async () => {
         try {
             const response = await fetch('/api/bug-tickets');
             if (!response.ok) throw new Error('Gagal mengambil ticket');
@@ -215,7 +218,7 @@ function DeveloperToolsContent() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [toast]);
 
     useEffect(() => {
         void fetchTickets();
@@ -225,7 +228,7 @@ function DeveloperToolsContent() {
         }, 3000);
 
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchTickets]);
 
     const handleManualRefresh = async () => {
         setIsRefreshing(true);
@@ -277,7 +280,9 @@ function DeveloperToolsContent() {
             case TICKET_STATUS.IN_PROGRESS:
                 return <Badge className="bg-blue-500">Sedang Diproses</Badge>;
             case TICKET_STATUS.RESOLVED:
-                return <Badge className="bg-green-500">Menunggu Verifikasi</Badge>;
+                return (
+                    <Badge className="bg-green-500">Menunggu Verifikasi</Badge>
+                );
             case TICKET_STATUS.CLOSED:
                 return <Badge className="bg-gray-500">Ditutup</Badge>;
             default:
@@ -409,51 +414,55 @@ function DeveloperToolsContent() {
         }
     };
 
-    const getWorkingAdmins = (
-        ticket: BugTicket,
-    ): Array<{ id: number | null; name: string }> => {
-        const result: Array<{ id: number | null; name: string }> = [];
+    const getWorkingAdmins = useCallback(
+        (ticket: BugTicket): Array<{ id: number | null; name: string }> => {
+            const result: Array<{ id: number | null; name: string }> = [];
 
-        if (ticket.assignedAdmin?.name) {
-            result.push({
-                id: Number.isFinite(ticket.assignedAdmin.id)
-                    ? ticket.assignedAdmin.id
-                    : null,
-                name: ticket.assignedAdmin.name,
+            if (ticket.assignedAdmin?.name) {
+                result.push({
+                    id: Number.isFinite(ticket.assignedAdmin.id)
+                        ? ticket.assignedAdmin.id
+                        : null,
+                    name: ticket.assignedAdmin.name,
+                });
+            }
+
+            const collaboratorsFromState = collaboratorsByTicket[ticket.id];
+            const collaboratorsFallback = ticket.collaborators_details ?? [];
+            const collaborators = collaboratorsFromState?.length
+                ? collaboratorsFromState
+                : collaboratorsFallback;
+
+            collaborators.forEach((collaborator) => {
+                if (!collaborator?.name) return;
+                result.push({
+                    id: Number.isFinite(collaborator.id)
+                        ? collaborator.id
+                        : null,
+                    name: collaborator.name,
+                });
             });
-        }
 
-        const collaboratorsFromState = collaboratorsByTicket[ticket.id];
-        const collaboratorsFallback = ticket.collaborators_details ?? [];
-        const collaborators = collaboratorsFromState?.length
-            ? collaboratorsFromState
-            : collaboratorsFallback;
-
-        collaborators.forEach((collaborator) => {
-            if (!collaborator?.name) return;
-            result.push({
-                id: Number.isFinite(collaborator.id) ? collaborator.id : null,
-                name: collaborator.name,
+            return result.filter((item, index, arr) => {
+                const key = `${item.id ?? 'none'}-${item.name.toLowerCase()}`;
+                return (
+                    arr.findIndex(
+                        (candidate) =>
+                            `${candidate.id ?? 'none'}-${candidate.name.toLowerCase()}` ===
+                            key,
+                    ) === index
+                );
             });
-        });
-
-        return result.filter((item, index, arr) => {
-            const key = `${item.id ?? 'none'}-${item.name.toLowerCase()}`;
-            return (
-                arr.findIndex(
-                    (candidate) =>
-                        `${candidate.id ?? 'none'}-${candidate.name.toLowerCase()}` ===
-                        key,
-                ) === index
-            );
-        });
-    };
+        },
+        [collaboratorsByTicket],
+    );
 
     const activeTickets = useMemo(
         () =>
             tickets.filter(
                 (ticket) =>
-                    normalizeTicketStatus(ticket.status) !== TICKET_STATUS.CLOSED,
+                    normalizeTicketStatus(ticket.status) !==
+                    TICKET_STATUS.CLOSED,
             ),
         [tickets],
     );
@@ -482,16 +491,66 @@ function DeveloperToolsContent() {
         return 'Semua tanggal';
     }, [reportEndDate, reportStartDate]);
 
+    const adminReportTickets = useMemo(
+        () =>
+            activeTickets
+                .filter((ticket) =>
+                    matchesDateRange(
+                        ticket.created_at,
+                        reportStartDate,
+                        reportEndDate,
+                    ),
+                )
+                .filter(
+                    (ticket) =>
+                        normalizeTicketStatus(ticket.status) !==
+                        TICKET_STATUS.OPEN,
+                )
+                .filter((ticket) => getWorkingAdmins(ticket).length > 0),
+        [activeTickets, getWorkingAdmins, reportEndDate, reportStartDate],
+    );
+
+    const adminReportOptions = useMemo(() => {
+        const uniqueAdmins = new Map<string, string>();
+
+        adminReportTickets.forEach((ticket) => {
+            getWorkingAdmins(ticket).forEach((admin) => {
+                const adminName = admin.name?.trim();
+                if (!adminName) return;
+
+                const key = adminName.toLocaleLowerCase('id');
+                if (!uniqueAdmins.has(key)) {
+                    uniqueAdmins.set(key, adminName);
+                }
+            });
+        });
+
+        return Array.from(uniqueAdmins.values()).sort((left, right) =>
+            left.localeCompare(right, 'id'),
+        );
+    }, [adminReportTickets, getWorkingAdmins]);
+
+    const isAdminReportFilterDisabled = statusFilter === 'open';
+    const adminReportFilterValue = isAdminReportFilterDisabled
+        ? NO_ADMIN_REPORT_VALUE
+        : adminReportFilter;
+
+    useEffect(() => {
+        if (
+            adminReportFilter !== 'all' &&
+            !adminReportOptions.includes(adminReportFilter)
+        ) {
+            setAdminReportFilter('all');
+        }
+    }, [adminReportFilter, adminReportOptions]);
+
     const statusCounts = useMemo(() => {
         const rangeFilteredTickets = activeTickets.filter((ticket) =>
-            matchesDateRange(
-                ticket.created_at,
-                reportStartDate,
-                reportEndDate,
-            ),
+            matchesDateRange(ticket.created_at, reportStartDate, reportEndDate),
         );
         const open = rangeFilteredTickets.filter(
-            (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.OPEN,
+            (ticket) =>
+                normalizeTicketStatus(ticket.status) === TICKET_STATUS.OPEN,
         ).length;
         const pendingEstimate = rangeFilteredTickets.filter(
             (ticket) =>
@@ -500,10 +559,12 @@ function DeveloperToolsContent() {
         ).length;
         const inProgress = rangeFilteredTickets.filter(
             (ticket) =>
-                normalizeTicketStatus(ticket.status) === TICKET_STATUS.IN_PROGRESS,
+                normalizeTicketStatus(ticket.status) ===
+                TICKET_STATUS.IN_PROGRESS,
         ).length;
         const resolved = rangeFilteredTickets.filter(
-            (ticket) => normalizeTicketStatus(ticket.status) === TICKET_STATUS.RESOLVED,
+            (ticket) =>
+                normalizeTicketStatus(ticket.status) === TICKET_STATUS.RESOLVED,
         ).length;
 
         return {
@@ -530,6 +591,21 @@ function DeveloperToolsContent() {
                         ? true
                         : normalizeTicketStatus(ticket.status) === statusFilter,
                 )
+                .filter((ticket) => {
+                    if (
+                        isAdminReportFilterDisabled ||
+                        adminReportFilter === 'all'
+                    ) {
+                        return true;
+                    }
+
+                    return getWorkingAdmins(ticket).some(
+                        (admin) =>
+                            admin.name.localeCompare(adminReportFilter, 'id', {
+                                sensitivity: 'accent',
+                            }) === 0,
+                    );
+                })
                 .filter(
                     (ticket) =>
                         ticket.ticket_number
@@ -554,7 +630,16 @@ function DeveloperToolsContent() {
                     if (priorityDiff !== 0) return priorityDiff;
                     return 0;
                 }),
-        [activeTickets, reportEndDate, reportStartDate, searchQuery, statusFilter],
+        [
+            activeTickets,
+            adminReportFilter,
+            getWorkingAdmins,
+            isAdminReportFilterDisabled,
+            reportEndDate,
+            reportStartDate,
+            searchQuery,
+            statusFilter,
+        ],
     );
 
     return (
@@ -611,6 +696,42 @@ function DeveloperToolsContent() {
                             </div>
 
                             <div className="ml-auto flex items-center gap-2">
+                                <select
+                                    value={adminReportFilterValue}
+                                    onChange={(event) =>
+                                        setAdminReportFilter(event.target.value)
+                                    }
+                                    disabled={isAdminReportFilterDisabled}
+                                    className={`h-9 rounded-md border px-3 py-1.5 text-sm ${
+                                        isAdminReportFilterDisabled
+                                            ? 'cursor-not-allowed border-gray-300 bg-gray-100 text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400'
+                                            : 'bg-white text-black dark:bg-gray-800 dark:text-white'
+                                    }`}
+                                    aria-label="Filter rekap hasil admin IT"
+                                >
+                                    {isAdminReportFilterDisabled ? (
+                                        <option value={NO_ADMIN_REPORT_VALUE}>
+                                            Tidak ada laporan admin IT
+                                        </option>
+                                    ) : (
+                                        <>
+                                            <option value="all">
+                                                Rekap semua Admin IT
+                                            </option>
+                                            {adminReportOptions.map(
+                                                (adminName) => (
+                                                    <option
+                                                        key={adminName}
+                                                        value={adminName}
+                                                    >
+                                                        {adminName}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </>
+                                    )}
+                                </select>
+
                                 <Button
                                     size="sm"
                                     onClick={() => {
@@ -665,10 +786,12 @@ function DeveloperToolsContent() {
                                         {statusCounts.pending_estimate})
                                     </option>
                                     <option value="in_progress">
-                                        Sedang diproses ({statusCounts.in_progress})
+                                        Sedang diproses (
+                                        {statusCounts.in_progress})
                                     </option>
                                     <option value="resolved">
-                                        Menunggu verifikasi ({statusCounts.resolved})
+                                        Menunggu verifikasi (
+                                        {statusCounts.resolved})
                                     </option>
                                 </select>
                             </div>
@@ -783,7 +906,8 @@ function DeveloperToolsContent() {
                                                                     aria-label="Ubah tingkat kesulitan"
                                                                 >
                                                                     <option value="">
-                                                                        Belum di tentukan
+                                                                        Belum di
+                                                                        tentukan
                                                                     </option>
                                                                     {DIFFICULTY_OPTIONS.map(
                                                                         (
